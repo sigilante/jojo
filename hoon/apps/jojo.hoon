@@ -1,3 +1,4 @@
+/+  jock
 /=  *  /common/wrapper
 ::
 =>
@@ -39,24 +40,24 @@
     |^
     =/  cause  ((soft cause) cause.input.ovum)
     ?~  cause
-      ~>  %slog.[0 (crip "invalid cause {<cause.input.ovum>}")]
+      ~>  %slog.[3 (crip "invalid cause {<cause.input.ovum>}")]
       :_  state
       [%log 'Invalid cause format']~
-    ~>  %slog.[0 (cat 3 'poked: ' str.u.cause)]
-    =/  subject=vase  !>(.)
-    =/  program=(each (pair type nock) tang)
-      (mule |.((ride p.subject str.u.cause)))
-    ?:  ?=(%| -.program)
-      :_  state
-      [%log (tang-to-cord p.program)]~
-    =/  result=(each vase tang)
-      (mule |.([p.p.program .*(q.subject q.p.program)]))
-    ?:  ?=(%| -.result)
-      :_  state
-      [%log (tang-to-cord p.result)]~
-    ~>  %slog.[0 (crip (text p.result))]
+    ~>  %slog.[1 (cat 3 'poked: ' str.u.cause)]
     :_  state
-    [%log (crip (text p.result))]~
+    =/  min=(each nock tang)
+      ;;  (each nock tang)
+      (mule |.((mint:jock str.u.cause)))
+    ?:  ?=(%| -.min)
+      ~&  >>  'failed to mint jock code'
+      [%log (tang-to-cord p.min)]~
+    =/  res=(each noun tang)
+      ;;  (each noun tang)
+      (mule |.(.*(%0 p.min)))
+    ?:  ?=(%| -.res)
+      ~&  >>  'failed to execute nock code'
+      [%log (tang-to-cord p.res)]~
+    [%log (crip "{<p.res>}")]~
     ::
     ++  tang-to-cord
       |=  =tang

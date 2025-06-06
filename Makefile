@@ -1,8 +1,9 @@
-run: nojo.jam
-	cargo run
+run: jojo.jam
+	MINIMAL_LOG_FORMAT=true cargo run
 
-nojo.jam: ./hoon/apps/nojo.hoon
-	hoonc --output ./nojo.jam ./hoon/apps/nojo.hoon
+jojo.jam: ./hoon/apps/jojo.hoon
+	hoonc --output ./jojo.jam ./hoon/apps/jojo.hoon
 
 clean:
-	rm nojo.jam
+	rm -f jojo.jam
+	rm -rf .data.jojo

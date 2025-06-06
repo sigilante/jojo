@@ -51,12 +51,12 @@ async fn process_input(nockapp: &mut NockApp, input: &str) -> Result<String, Box
 async fn main() -> Result<(), Box<dyn Error>> {
   let cli = boot::default_boot_cli(false);
   boot::init_default_tracing(&cli);
-  let kernel = fs::read("nojo.jam").map_err(|e| format!("Failed to read nojo.jam: {}", e))?;
+  let kernel = fs::read("jojo.jam").map_err(|e| format!("Failed to read jojo.jam: {}", e))?;
 
-  let mut nockapp = boot::setup(&kernel, Some(cli), &[], "nojo", None).await?;
+  let mut nockapp = boot::setup(&kernel, Some(cli), &[], "jojo", None).await?;
 
   loop {
-    print!("nojo> ");
+    print!("jojo> ");
     io::stdout().flush().unwrap();
     let mut input = String::new();
     match io::stdin().read_line(&mut input) {

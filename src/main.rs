@@ -49,6 +49,11 @@ async fn process_input(nockapp: &mut NockApp, input: &str) -> Result<String, Box
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+  // default to INFO: the vendored tracing falls back to TRACE,
+  // which floods the session with gnort/mio debug output
+  if std::env::var("RUST_LOG").is_err() {
+    std::env::set_var("RUST_LOG", "info");
+  }
   let cli = boot::default_boot_cli(false);
   boot::init_default_tracing(&cli);
   let kernel = fs::read("jojo.jam").map_err(|e| format!("Failed to read jojo.jam: {}", e))?;
@@ -65,6 +70,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
       }
       Ok(_) => {
         let input = input.trim();
+        if input == "exit" || input == ":exit" || input == ":q" {
+          println!("bye");
+          std::process::exit(0);
+        }
         if let Ok(result) = process_input(&mut nockapp, input).await {
             println!("{}", result);
         }
@@ -75,5 +84,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
       }
     }
   }
-  Ok(())
+  // EOF (Ctrl+D) lands here; exit the process rather than
+  // returning, so the serf thread cannot keep the session alive
+  println!("bye");
+  std::process::exit(0);
 }

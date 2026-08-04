@@ -3,12 +3,16 @@
 Jojo is a very simple Jock REPL written on the NockApp stack.
 Jojo is based on [Nojo by ixv](https://github.com/ixv/nojo).
 
-Lke Nojo, Jojo is slow and has few affordances as a shell. But
-it's a nice proof of concept for a NockApp wrapper as REPL.
+Jojo now hosts the NEW Jock compiler's REPL kernel (jojo.jam is
+built by that project's `tools/repl.sh`). Statements (lines
+ending `;`) accumulate in kernel state; expressions evaluate
+against the accumulated history; `:nock <expr>` reveals the
+expression's compiled Nock formula; `exit` (or `:exit` / `:q` /
+Ctrl+D) ends the session. Logging defaults to INFO (set RUST_LOG
+to override).
 
-(For instance, Jojo does not currently support multi-line input.
-But since Jock is whitespace-agnostic, you can still make Jock
-programs work.)
+(Jojo does not support multi-line input. Since Jock is
+whitespace-agnostic, fold programs onto one line.)
 
 ### Install & Run
 
@@ -18,8 +22,7 @@ programs work.)
 
 3. Run `make` to build and run Jojo.
 
-4. Jojo (and Nojo) do not support the Urbit `|exit` affordance.
-Press Ctrl+Z to kill the session.
+4. Type `exit` (or press Ctrl+D) to end the session.
 
 ### Examples
 

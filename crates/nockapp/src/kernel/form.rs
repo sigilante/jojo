@@ -903,6 +903,30 @@ impl Serf {
     /// Result containing the poke response or an error.
     #[tracing::instrument(level = "info", skip_all)]
     pub fn do_poke(&mut self, job: Noun) -> Result<Noun> {
+        // Spike scry roof: make a Jock kernel's peekContext (Nock 12)
+        // RESOLVE instead of BAIL_EXIT ("no scry handler").  The
+        // interpreter slams scry_stack's head gate with [reff path]
+        // and double-unwraps [~ [~ v]] -> v.  We install a one-handler
+        // stack [gate 0] whose gate ECHOES the scried path: it returns
+        // [~ [~ path]], path at axis 13 of the scry core
+        // [battery [reff path] context].  So peekContext(n) -> n,
+        // proving the roof is consulted and the path flows through.
+        // (Explicit registration per the roof design; a real roof
+        // dispatches on the path.  A crashing/blocking roof is the
+        // ScryCrashed/ScryBlocked story, separate.)
+        let roof = {
+            let stack = &mut self.context.stack;
+            let one_zero = T(stack, &[D(1), D(0)]); // [1 0] -> const ~
+            let get_path = T(stack, &[D(0), D(13)]); // [0 13] -> path
+            // +1 the path so the answer visibly comes from the ROOF
+            // (output != input), not from peekContext echoing its arg
+            let inc_path = T(stack, &[D(4), get_path]); // [4 [0 13]] -> +(path)
+            let some_path = T(stack, &[one_zero, inc_path]); // [~ +(path)]
+            let battery = T(stack, &[one_zero, some_path]); // [~ [~ +(path)]]
+            let roof_gate = T(stack, &[battery, D(0), D(0)]); // [batt 0 0]
+            T(stack, &[roof_gate, D(0)]) // scry_stack = [gate 0]
+        };
+        self.context.scry_stack = roof;
         match self.soft(job, POKE_AXIS, Some("poke".to_string())) {
             Ok(res) => {
                 let cell = res.as_cell().expect("serf: poke: +slam returned atom");

@@ -33,13 +33,16 @@ async fn process_input(nockapp: &mut NockApp, input: &str) -> Result<String, Box
       let mut results = Vec::new();
       for (_i, effect) in effects.iter().enumerate() {
         let effect_noun = unsafe { effect.root() };
+        // Only [tag cord] effects (the REPL's %markdown output) render;
+        // skip anything else (e.g. a %crud goof from a blocked scry)
+        // rather than panicking, so a peekContext miss/block is legible.
         if let Ok(cell) = effect_noun.as_cell() {
-          let Ok(tail_atom) = cell.tail().as_atom() else { todo!() };
-          let Ok(tail_string) = std::str::from_utf8(tail_atom.as_ne_bytes()) else {todo!() };
+          let Ok(tail_atom) = cell.tail().as_atom() else { continue };
+          let Ok(tail_string) = std::str::from_utf8(tail_atom.as_ne_bytes()) else { continue };
           results.push(tail_string.trim_end_matches('\0').to_string());
         }
       }
-      Ok(results.last().unwrap_or(&String::new()).clone())
+      Ok(results.last().cloned().unwrap_or_else(|| "(no answer: scry blocked or empty)".to_string()))
     }
     Err(_e) => {
       Ok("command failed".to_string())

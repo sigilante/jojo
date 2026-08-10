@@ -42,5 +42,21 @@ jojo> func fib(n:Uint) -> Uint { if n == 0 { 1 } else if n == 1 { 1 } else { $(n
 
 ### Development
 
-If you are hacking on Jock, then you should only need to update
-`/lib/jock.hoon` and rebuild using `make` to iterate.
+**The committed `jojo.jam` is the source of truth for the kernel.** It
+is the Jock REPL kernel built from **jock `master`** by that project's
+`tools/repl.sh` (the current 9-file honk-codex compiler:
+`jock`/`mint`/`parse`/`lex`/`sugar`/`mold`/`check`/`expand`/`nockasm`),
+and it is checked in (un-ignored) so a fresh clone runs as-is with the
+full peek family (`peekContext`/`peekUnder`/`peekTry`, `as?`/`as!`).
+
+To refresh it after a compiler change, rebuild from a jock checkout and
+copy it in:
+
+    ( cd ~/jock && zsh tools/repl.sh \
+        --data-dir crates/jockc/hoon/lib /tmp/repl.jam )
+    cp /tmp/repl.jam jojo.jam
+
+NOTE: the bundled `hoon/lib/jock.hoon` + `hoon/apps/jojo.hoon` + the
+`make`/`hoonc` path are the **old single-file `jockt`-era compiler** and
+are stale (no `peekContext`); they are kept only for reference. Do not
+iterate there — rebuild `jojo.jam` from the jock repo as above.

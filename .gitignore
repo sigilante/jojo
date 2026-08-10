@@ -16,6 +16,8 @@ Thumbs.db
 # Compiled artifacts
 *.jam
 out.jam
+# ...except the committed REPL kernel (built from jock master; see README)
+!jojo.jam
 
 # Data directories  
 .data.*

@@ -903,6 +903,43 @@ impl Serf {
     /// Result containing the poke response or an error.
     #[tracing::instrument(level = "info", skip_all)]
     pub fn do_poke(&mut self, job: Noun) -> Result<Noun> {
+        // Jojo scry roof: make a Jock kernel's peekContext (Nock 12)
+        // RESOLVE instead of BAIL_EXIT ("no scry handler").  The
+        // interpreter slams scry_stack's head gate with [reff path]
+        // and double-unwraps [~ [~ v]] -> v.  We install a one-handler
+        // stack [gate 0] whose gate is a small string-keyed NAMESPACE
+        // that dispatches on the scried path (axis 13 of the scry core
+        // [battery [reff path] context]); a Jock String is a @t cord,
+        // so the path compares by atom equality:
+        //     peekContext("answer") -> 42
+        //     peekContext("pi")     -> 314
+        //     peekContext("hoon")   -> 1337
+        //     anything else         -> ~ (block; a real .^ crashes,
+        //                                  the Arvo "come back later")
+        // This is the "NockApp answers nothing until you register a
+        // roof" side; the Gall/Arvo side wires the gate to .^ instead.
+        let roof = {
+            let stack = &mut self.context.stack;
+            let path = T(stack, &[D(0), D(13)]); // [0 13] -> scried path
+            let block = T(stack, &[D(1), D(0)]); // [1 0] -> ~ (block)
+            // one arm per entry: [6 [5 path [1 cord]] [1 0 0 val] else]
+            // where [1 0 0 val] is [~ [~ val]] and 6 falls through on miss.
+            let lit_hoon = T(stack, &[D(1), D(1852796776)]); // "hoon"
+            let eq_hoon = T(stack, &[D(5), path, lit_hoon]);
+            let ans_hoon = T(stack, &[D(1), D(0), D(0), D(1337)]);
+            let c_hoon = T(stack, &[D(6), eq_hoon, ans_hoon, block]);
+            let lit_pi = T(stack, &[D(1), D(26992)]); // "pi"
+            let eq_pi = T(stack, &[D(5), path, lit_pi]);
+            let ans_pi = T(stack, &[D(1), D(0), D(0), D(314)]);
+            let c_pi = T(stack, &[D(6), eq_pi, ans_pi, c_hoon]);
+            let lit_ans = T(stack, &[D(1), D(125780121316961)]); // "answer"
+            let eq_ans = T(stack, &[D(5), path, lit_ans]);
+            let ans_ans = T(stack, &[D(1), D(0), D(0), D(42)]);
+            let battery = T(stack, &[D(6), eq_ans, ans_ans, c_pi]);
+            let roof_gate = T(stack, &[battery, D(0), D(0)]); // [batt 0 0]
+            T(stack, &[roof_gate, D(0)]) // scry_stack = [gate 0]
+        };
+        self.context.scry_stack = roof;
         match self.soft(job, POKE_AXIS, Some("poke".to_string())) {
             Ok(res) => {
                 let cell = res.as_cell().expect("serf: poke: +slam returned atom");

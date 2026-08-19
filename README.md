@@ -11,8 +11,17 @@ expression's compiled Nock formula; `exit` (or `:exit` / `:q` /
 Ctrl+D) ends the session. Logging defaults to INFO (set RUST_LOG
 to override).
 
-(Jojo does not support multi-line input. Since Jock is
-whitespace-agnostic, fold programs onto one line.)
+Jojo boots any trap jam: pass the path as the first argument
+(`cargo run -- /path/to/some.jam`; default `jojo.jam`), sealed
+kernels from jock's `kern.sh --sealed` included. Each jam gets
+its own NockApp instance (named by the file stem), so different
+jams never adopt each other's checkpointed state.
+
+Multi-line input works: while an entry's brackets stay open the
+prompt continues (`  ... `) and lines accumulate, submitting as
+one entry when they balance. A blank line at the continuation
+prompt cancels the pending entry. (Brackets inside string and
+char literals and behind `//` comments don't count.)
 
 ### Install & Run
 
@@ -26,15 +35,20 @@ whitespace-agnostic, fold programs onto one line.)
 
 ### Examples
 
-As mentioned above, Jojo does not support multi-line input yet,
-so simply turn newlines into spaces or tabs.
-
 ```
 jojo> 1 + 41
 42
 
 jojo> let a = 5; a + 37
 42
+
+jojo> func fact(n: @) -> @ {
+  ...   if n == 0 { 1 }
+  ...   else { n * fact(n - 1) }
+  ... };
+ok
+jojo> fact(5)
+120
 
 jojo> func fib(n:Uint) -> Uint { if n == 0 { 1 } else if n == 1 { 1 } else { $(n - 1) + $(n - 2) } }; ( fib(0) fib(1) fib(2) fib(3) fib(4) fib(5) fib(6) fib(7) fib(8) fib(9) fib(10) )
 [1 1 2 3 5 8 13 21 34 55 89]

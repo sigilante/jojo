@@ -27,3 +27,5 @@ out.jam
 
 # Temporary files
 *~
+.jojo_history
+.*_history

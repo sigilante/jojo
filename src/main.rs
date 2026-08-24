@@ -8,7 +8,9 @@ use nockvm_macros::tas;
 use std::error::Error;
 use std::fs;
 use bytes::Bytes;
-use std::io::{self, Write};
+use rustyline::error::ReadlineError;
+use rustyline::validate::{ValidationContext, ValidationResult, Validator};
+use rustyline::{Completer, Editor, Helper, Highlighter, Hinter};
 
 fn string_to_atom(slab: &mut NounSlab, s: &str) -> Result<Atom, Box<dyn Error>> {
   let bytes = Bytes::from(s.as_bytes().to_vec());
@@ -56,6 +58,27 @@ fn open_depth(src: &str) -> i32 {
     }
   }
   depth
+}
+
+// The editor asks whether the buffer is a complete entry when
+// Enter is pressed:  while brackets stay open the buffer grows
+// (Enter inserts a newline) rather than submitting.  A pasted
+// block therefore lands as ONE editable buffer — bracketed paste
+// hands it over whole, the validator judges the whole — instead
+// of feeding a read_line loop line by line, where stray
+// trailing lines of the paste turned into extra continuation
+// prompts and a parse error the tester never typed.
+#[derive(Completer, Helper, Highlighter, Hinter)]
+struct Entry;
+
+impl Validator for Entry {
+  fn validate(&self, ctx: &mut ValidationContext) -> rustyline::Result<ValidationResult> {
+    Ok(if open_depth(ctx.input()) > 0 {
+      ValidationResult::Incomplete
+    } else {
+      ValidationResult::Valid(None)
+    })
+  }
 }
 
 
@@ -117,52 +140,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
   let mut nockapp = boot::setup(&kernel, Some(cli), &[], &instance, None).await?;
 
-  // Multiline entry: while the buffer's bracket depth stays
-  // positive the prompt continues and lines accumulate; the
-  // joined chunk pokes as ONE %command (the kernel's statement
-  // test is the last byte after rtrim, so newlines inside are
-  // fine).  A blank line during continuation cancels the buffer.
-  let mut buf = String::new();
+  // Line editing, history and multiline entry all come from
+  // rustyline:  Up/Down recall previous entries (a multiline
+  // entry comes back whole, ready to edit and resubmit), Left/
+  // Right/Home/End edit in place, Ctrl-C abandons the current
+  // buffer, Ctrl-D on an empty line exits.  History persists in
+  // .jojo_history beside the jam, one file per instance.
+  let mut rl: Editor<Entry, _> = Editor::new()?;
+  rl.set_helper(Some(Entry));
+  let hist = format!(".{}_history", instance);
+  let _ = rl.load_history(&hist);
   loop {
-    print!("{}", if buf.is_empty() { "jojo> " } else { "  ... " });
-    io::stdout().flush().unwrap();
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-      Ok(0) => {
-        break;
-      }
-      Ok(_) => {
-        let line = input.trim_end();
-        if buf.is_empty() {
-          let cmd = line.trim();
-          if cmd == "exit" || cmd == ":exit" || cmd == ":q" {
-            println!("bye");
-            std::process::exit(0);
-          }
-        } else if line.trim().is_empty() {
-          println!("(cancelled)");
-          buf.clear();
+    match rl.readline("jojo> ") {
+      Ok(entry) => {
+        let chunk = entry.trim();
+        if chunk.is_empty() {
           continue;
         }
-        if !buf.is_empty() {
-          buf.push('\n');
+        let _ = rl.add_history_entry(chunk);
+        if chunk == "exit" || chunk == ":exit" || chunk == ":q" {
+          break;
         }
-        buf.push_str(line);
-        if open_depth(&buf) > 0 {
-          continue;
-        }
-        let chunk = std::mem::take(&mut buf);
-        if let Ok(result) = process_input(&mut nockapp, chunk.trim()).await {
-            println!("{}", result);
+        if let Ok(result) = process_input(&mut nockapp, chunk).await {
+          println!("{}", result);
         }
       }
+      Err(ReadlineError::Interrupted) => {
+        println!("(cancelled)");
+        continue;
+      }
+      Err(ReadlineError::Eof) => break,
       Err(error) => {
         println!("Error reading input: {}", error);
         break;
       }
     }
   }
-  // EOF (Ctrl+D) lands here; exit the process rather than
+  let _ = rl.save_history(&hist);
+  // exit/EOF/Ctrl-D land here; exit the process rather than
   // returning, so the serf thread cannot keep the session alive
   println!("bye");
   std::process::exit(0);

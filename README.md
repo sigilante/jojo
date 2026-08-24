@@ -17,11 +17,17 @@ kernels from jock's `kern.sh --sealed` included. Each jam gets
 its own NockApp instance (named by the file stem), so different
 jams never adopt each other's checkpointed state.
 
-Multi-line input works: while an entry's brackets stay open the
-prompt continues (`  ... `) and lines accumulate, submitting as
-one entry when they balance. A blank line at the continuation
-prompt cancels the pending entry. (Brackets inside string and
-char literals and behind `//` comments don't count.)
+The prompt is a real line editor (rustyline). While an entry's
+brackets stay open, Enter inserts a newline instead of
+submitting, so a multi-line entry is written and edited as one
+buffer; it submits when the brackets balance. Pasting a block
+works the same way — the paste lands whole, trailing blank
+lines and all, and you can fix it up before pressing Enter.
+Up/Down recall previous entries (a multi-line entry comes back
+whole, ready to edit and resubmit); Ctrl-C abandons the current
+buffer; Ctrl-D or `exit` quits. History persists in
+`.jojo_history` (one file per jam instance). Brackets inside
+string and char literals and behind `//` comments don't count.
 
 ### Install & Run
 
@@ -43,9 +49,9 @@ jojo> let a = 5; a + 37
 42
 
 jojo> func fact(n: @) -> @ {
-  ...   if n == 0 { 1 }
-  ...   else { n * fact(n - 1) }
-  ... };
+  if n == 0 { 1 }
+  else { n * fact(n - 1) }
+};
 ok
 jojo> fact(5)
 120

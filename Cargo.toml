@@ -127,6 +127,7 @@ tracing.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 bytes.workspace = true
+rustyline = { version = "15", features = ["derive"] }
 
 
 

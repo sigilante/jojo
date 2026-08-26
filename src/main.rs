@@ -82,7 +82,7 @@ impl Validator for Entry {
 }
 
 
-async fn process_input(nockapp: &mut NockApp, input: &str) -> Result<String, Box<dyn Error>> {
+async fn process_input(nockapp: &mut NockApp, tag: u64, input: &str) -> Result<String, Box<dyn Error>> {
   // Handle empty input
   if input.trim().is_empty() {
     return Ok(String::new());
@@ -91,7 +91,7 @@ async fn process_input(nockapp: &mut NockApp, input: &str) -> Result<String, Box
   let mut poke_slab = NounSlab::new();
 
   let str_atom = string_to_atom(&mut poke_slab, input)?;
-  let command_noun = T(&mut poke_slab, &[D(tas!(b"command")), str_atom.as_noun()]);
+  let command_noun = T(&mut poke_slab, &[D(tag), str_atom.as_noun()]);
   poke_slab.set_root(command_noun);
 
   match nockapp.poke(SystemWire.to_wire(), poke_slab).await {
@@ -120,8 +120,9 @@ async fn process_input(nockapp: &mut NockApp, input: &str) -> Result<String, Box
 async fn main() -> Result<(), Box<dyn Error>> {
   // default to INFO: the vendored tracing falls back to TRACE,
   // which floods the session with gnort/mio debug output
+  let checking = std::env::args().any(|a| a == "--check");
   if std::env::var("RUST_LOG").is_err() {
-    std::env::set_var("RUST_LOG", "info");
+    std::env::set_var("RUST_LOG", if checking { "error" } else { "info" });
   }
   let cli = boot::default_boot_cli(false);
   boot::init_default_tracing(&cli);
@@ -130,7 +131,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
   // hand a tester, sealed kernels included.  The NockApp
   // instance is named by the jam's file stem, so different jams
   // never adopt each other's checkpointed state through +load.
-  let jam_path = std::env::args().nth(1).unwrap_or_else(|| "jojo.jam".to_string());
+  //
+  // --check FILE is the one-shot agent lane: poke the kernel's
+  // %check cause with the file's text, print the JSON answer
+  // (the compiler's +chkj cord, schema pinned in the jock
+  // corpus), exit 0 if it typechecks, 1 on a refusal.  The warm
+  // kernel is what makes this sub-second: the checkpoint carries
+  // the cold state, so the check runs jetted — a bare one-shot
+  // evaluator cannot do this (the sealed-kernel finding).
+  let mut jam_arg: Option<String> = None;
+  let mut check_arg: Option<String> = None;
+  let mut argv = std::env::args().skip(1);
+  while let Some(a) = argv.next() {
+    if a == "--check" {
+      match argv.next() {
+        Some(f) => check_arg = Some(f),
+        None => { eprintln!("jojo: --check needs a source file"); std::process::exit(64); }
+      }
+    } else if jam_arg.is_none() {
+      jam_arg = Some(a);
+    } else {
+      eprintln!("jojo: unexpected argument {}", a);
+      std::process::exit(64);
+    }
+  }
+  let jam_path = jam_arg.unwrap_or_else(|| "jojo.jam".to_string());
   let kernel = fs::read(&jam_path).map_err(|e| format!("Failed to read {}: {}", jam_path, e))?;
   let instance = std::path::Path::new(&jam_path)
     .file_stem()
@@ -139,6 +164,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .to_string();
 
   let mut nockapp = boot::setup(&kernel, Some(cli), &[], &instance, None).await?;
+
+  if let Some(src_path) = check_arg {
+    let src = fs::read_to_string(&src_path)
+      .map_err(|e| format!("Failed to read {}: {}", src_path, e))?;
+    let out = process_input(&mut nockapp, tas!(b"check"), src.trim_end()).await?;
+    println!("{}", out);
+    std::process::exit(if out.contains("\"status\":\"ok\"") { 0 } else { 1 });
+  }
 
   // Line editing, history and multiline entry all come from
   // rustyline:  Up/Down recall previous entries (a multiline
@@ -161,7 +194,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if chunk == "exit" || chunk == ":exit" || chunk == ":q" {
           break;
         }
-        if let Ok(result) = process_input(&mut nockapp, chunk).await {
+        if let Ok(result) = process_input(&mut nockapp, tas!(b"command"), chunk).await {
           println!("{}", result);
         }
       }

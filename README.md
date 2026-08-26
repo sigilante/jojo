@@ -48,6 +48,14 @@ under a second — against ~5 s per call for jock's batch
 pre-evaluated checker would run jetless). Checks never touch the
 session history.
 
+**One session per jam instance.** Two concurrent `jojo` processes
+on the same jam boot and run without an error, but they race the
+shared checkpoint: measured live, a third session after two
+coincident ones found NEITHER session's history — the torn
+checkpoint fell back to empty state. Run one session per
+instance (`--check` one-shots against an idle instance are fine);
+copies of a jam under different file stems get separate instances.
+
 ### Install & Run
 
 1. Install the Rust tool stack, such as `cargo`.

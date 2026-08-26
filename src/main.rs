@@ -170,7 +170,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
       .map_err(|e| format!("Failed to read {}: {}", src_path, e))?;
     let out = process_input(&mut nockapp, tas!(b"check"), src.trim_end()).await?;
     println!("{}", out);
-    std::process::exit(if out.contains("\"status\":\"ok\"") { 0 } else { 1 });
+    // the verdict comes from the JSON's leading status field, not a
+    // substring scan: +chkj emits {"status":... first and +jesc
+    // escapes report text, but anchoring at the START means an
+    // embedded '"status":"ok"' inside a quoted source line can
+    // never flip the exit code even if escaping ever regresses
+    let ok = out.trim_start().starts_with("{\"status\":\"ok\"");
+    std::process::exit(if ok { 0 } else { 1 });
   }
 
   // Line editing, history and multiline entry all come from

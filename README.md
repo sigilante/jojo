@@ -29,6 +29,25 @@ buffer; Ctrl-D or `exit` quits. History persists in
 `.jojo_history` (one file per jam instance). Brackets inside
 string and char literals and behind `//` comments don't count.
 
+### One-shot checks (the agent lane)
+
+`jojo <kernel.jam> --check file.jock` boots the kernel, pokes its
+`%check` cause with the file's text, prints one JSON object (the
+compiler's `+chkj` schema, pinned in the jock corpus), and exits
+0 if the program typechecks, 1 on a refusal:
+
+```
+$ jojo jojo.jam --check prog.jock
+{"status":"refused","tag":"mill-nest","line":3,"col":4,"report":[...]}
+```
+
+This is the *warm* check lane: the kernel checkpoint carries the
+runtime's cold state, so the check runs jetted and answers in
+under a second — against ~5 s per call for jock's batch
+`tools/check.sh`, which must rebuild per call (a shipped
+pre-evaluated checker would run jetless). Checks never touch the
+session history.
+
 ### Install & Run
 
 1. Install the Rust tool stack, such as `cargo`.

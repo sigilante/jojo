@@ -109,6 +109,22 @@ copy it in:
     ( cd ~/jock && zsh tools/repl.sh /tmp/repl.jam )
     cp /tmp/repl.jam jojo.jam
 
+Pass no `--data-dir`:  the committed jam is the module-free build, and
+that is checkable rather than assumed --- the module-bearing variant is
+~82 KB larger, which is the size of `lib/*.jock` (~81 KB) riding along
+as source.
+
+**Clear the instance state when the prelude's surface changes
+incompatibly.** Kernel state is the accumulated statement history, as
+TEXT, and the new compiler recompiles it on adoption --- so history
+written against an older prelude can stop compiling and take every
+later expression down with it.  The `trip()` to `bytes()` rename (jock
+2026-09-25) is exactly that kind of change.  Instances are keyed by the
+jam's FILE STEM, so refreshing `jojo.jam` in place keeps the old
+`.data.jojo`:
+
+    rm -rf .data.jojo      # or: make clean
+
 NOTE: the bundled `hoon/lib/jock.hoon` + `hoon/apps/jojo.hoon` + the
 `make`/`hoonc` path are the **old single-file `jockt`-era compiler** and
 are stale (no `peekContext`); they are kept only for reference. Do not

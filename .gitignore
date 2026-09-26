@@ -18,6 +18,8 @@ Thumbs.db
 out.jam
 # ...except the committed REPL kernel (built from jock master; see README)
 !jojo.jam
+# ...and the chain-bearing kernel (compiled package, no source; see README)
+!jojo-chain.jam
 
 # Data directories  
 .data.*

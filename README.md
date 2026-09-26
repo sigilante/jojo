@@ -125,6 +125,41 @@ jam's FILE STEM, so refreshing `jojo.jam` in place keeps the old
 
     rm -rf .data.jojo      # or: make clean
 
+**`jojo-chain.jam` is the same kernel with the `chain` package
+compiled in**, so `import chain;` works at the prompt. Jojo has no
+runtime import path; a package reaches the REPL only by being built
+into the kernel.
+
+    cargo run -- jojo-chain.jam
+    jojo> import chain;
+    ok
+    jojo> chain.tob58(chain.hashnoun(1))
+    "6cpvkSJWCMfHpH4KpEJ6ReAXNb7HWMWjte5AbaXdhb4YuJkmwiYGsn2"
+
+It is shareable where a `lib/*.jock`-bearing build is not. A package
+is the compiled construction formula (jock `tools/pkg.sh`), not
+source: the kernel is 3,641,744 bytes larger than `jojo.jam`, and
+the package jam alone is 3,640,632. The formula runs at boot, so
+the chain batteries register with `%fast` and run jetted; boot
+takes a few seconds longer. It keeps its own instance state in
+`.data.jojo-chain`.
+
+`jojo-chain.manifest` pins the package and kernel sha256s. **Rebuild
+from a clean jock master checkout.** A dirty tree gives a different
+package, and jock's rule is that a jam which cannot be rebuilt
+bit-identically does not ship:
+
+    ( mkdir -p /tmp/chainpkg && cd ~/jock && zsh tools/pkg.sh pkg/chain-core.hoon /tmp/chainpkg/chain.jam &&
+      zsh tools/repl.sh --data-dir /tmp/chainpkg --manifest /tmp/chain.man /tmp/repl-chain.jam )
+    cp /tmp/repl-chain.jam jojo-chain.jam
+    shasum -a 256 /tmp/chainpkg/chain.jam jojo-chain.jam   # compare to the manifest
+
+The data-dir must hold `chain.jam` and nothing else. Any `*.jock` in
+it would ride along as source. Do not reuse
+`~/jock/.chain-pkg/chain.jam` either: it is a local build that goes
+stale when `pkg/chain-core.hoon` changes. Refresh both jams together
+so they stay on the same compiler.
+
 NOTE: the bundled `hoon/lib/jock.hoon` + `hoon/apps/jojo.hoon` + the
 `make`/`hoonc` path are the **old single-file `jockt`-era compiler** and
 are stale (no `peekContext`); they are kept only for reference. Do not

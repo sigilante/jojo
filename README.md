@@ -119,7 +119,10 @@ incompatibly.** Kernel state is the accumulated statement history, as
 TEXT, and the new compiler recompiles it on adoption --- so history
 written against an older prelude can stop compiling and take every
 later expression down with it.  The `trip()` to `bytes()` rename (jock
-2026-09-25) is exactly that kind of change.  Instances are keyed by the
+2026-09-25) is exactly that kind of change, and so is sealing a library
+type: `rational.RatState` and `interval.IvState` became `private` at
+jock v0.1.0-beta-rc, so stored history that names or constructs either
+one no longer compiles.  Instances are keyed by the
 jam's FILE STEM, so refreshing `jojo.jam` in place keeps the old
 `.data.jojo`:
 
@@ -138,8 +141,10 @@ into the kernel.
 
 It is shareable where a `lib/*.jock`-bearing build is not. A package
 is the compiled construction formula (jock `tools/pkg.sh`), not
-source: the kernel is 3,641,744 bytes larger than `jojo.jam`, and
-the package jam alone is 3,640,632. The formula runs at boot, so
+source: the kernel is 3,678,920 bytes larger than `jojo.jam`, and
+the package jam alone is 3,677,816 --- the 1,104-byte remainder is the
+lsrc wrapper, and that the two track each other is the check worth
+re-running after a refresh. The formula runs at boot, so
 the chain batteries register with `%fast` and run jetted; boot
 takes a few seconds longer. It keeps its own instance state in
 `.data.jojo-chain`.

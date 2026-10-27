@@ -1,6 +1,6 @@
 # jojo-chain.jam: package manifest (jock tools/libs.py --manifest format)
-# built from jock v0.1.0-beta-rc (master 39ac70b), clean tree:
+# built from jock 47838d9 (2026-10-27, sigilante/spec-recomposition), clean tree:
 #   tools/pkg.sh pkg/chain-core.hoon chain.jam
 #   tools/repl.sh --data-dir <dir holding only chain.jam> jojo-chain.jam
-# kernel sha256: 33f07413ed049bde778c4ac14a213e47bf20f1a308e2e9fa3584c9144057a268
-chain	932aab3c10482692c65672eea944f25837fe3c2dae4ad014da4f8500defdc5fd	chain.jam
+# kernel sha256: 34c45678b5f93026c2d5e1e79a2a3c623d389a869c3e08f6eeb758b86d700cac
+chain	a373f8cb2b7e4d7fecbe3e1c033be66bd5fec920cd17d9336b6b06cba584fd0a	chain.jam

@@ -31,3 +31,4 @@ out.jam
 *~
 .jojo_history
 .*_history
+!atalante.jam

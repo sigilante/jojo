@@ -82,10 +82,15 @@ impl Validator for Entry {
 }
 
 
-async fn process_input(nockapp: &mut NockApp, tag: u64, input: &str) -> Result<String, Box<dyn Error>> {
+// What one poke answers:  the text to print (the last rendered
+// effect) and, when the kernel sent a [%prompt cord] effect, the
+// prompt the line editor shows from the next line on.
+struct Answer { text: String, prompt: Option<String> }
+
+async fn process_input(nockapp: &mut NockApp, tag: u64, input: &str) -> Result<Answer, Box<dyn Error>> {
   // Handle empty input
   if input.trim().is_empty() {
-    return Ok(String::new());
+    return Ok(Answer { text: String::new(), prompt: None });
   }
 
   let mut poke_slab = NounSlab::new();
@@ -97,21 +102,34 @@ async fn process_input(nockapp: &mut NockApp, tag: u64, input: &str) -> Result<S
   match nockapp.poke(SystemWire.to_wire(), poke_slab).await {
     Ok(effects) => {
       let mut results = Vec::new();
+      let mut prompt = None;
       for (_i, effect) in effects.iter().enumerate() {
         let effect_noun = unsafe { effect.root() };
-        // Only [tag cord] effects (the REPL's %markdown output) render;
-        // skip anything else (e.g. a %crud goof from a blocked scry)
-        // rather than panicking, so a peekContext miss/block is legible.
+        // Only [tag cord] effects render:  [%prompt cord] sets the
+        // prompt for the lines that follow (a kernel with modes, such
+        // as Atalante's apple prompts, announces its mode this way);
+        // any other tag (the REPL's %markdown output) is text, and the
+        // last one is the answer.  Skip anything else (e.g. a %crud
+        // goof from a blocked scry) rather than panicking, so a
+        // peekContext miss/block is legible.
         if let Ok(cell) = effect_noun.as_cell() {
+          let Ok(head_atom) = cell.head().as_atom() else { continue };
           let Ok(tail_atom) = cell.tail().as_atom() else { continue };
           let Ok(tail_string) = std::str::from_utf8(tail_atom.as_ne_bytes()) else { continue };
-          results.push(tail_string.trim_end_matches('\0').to_string());
+          let text = tail_string.trim_end_matches('\0').to_string();
+          let is_prompt = std::str::from_utf8(head_atom.as_ne_bytes())
+            .map(|t| t.trim_end_matches('\0') == "prompt")
+            .unwrap_or(false);
+          if is_prompt { prompt = Some(text); } else { results.push(text); }
         }
       }
-      Ok(results.last().cloned().unwrap_or_else(|| "(no answer: scry blocked or empty)".to_string()))
+      Ok(Answer {
+        text: results.last().cloned().unwrap_or_else(|| "(no answer: scry blocked or empty)".to_string()),
+        prompt,
+      })
     }
     Err(_e) => {
-      Ok("command failed".to_string())
+      Ok(Answer { text: "command failed".to_string(), prompt: None })
     }
   }
 }
@@ -139,14 +157,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
   // kernel is what makes this sub-second: the checkpoint carries
   // the cold state, so the check runs jetted — a bare one-shot
   // evaluator cannot do this (the sealed-kernel finding).
+  //
+  // --prompt STR is the prompt the session opens with (default
+  // `jojo> `); a kernel changes it afterwards with a [%prompt cord]
+  // effect.
   let mut jam_arg: Option<String> = None;
   let mut check_arg: Option<String> = None;
+  let mut prompt_arg: Option<String> = None;
   let mut argv = std::env::args().skip(1);
   while let Some(a) = argv.next() {
     if a == "--check" {
       match argv.next() {
         Some(f) => check_arg = Some(f),
         None => { eprintln!("jojo: --check needs a source file"); std::process::exit(64); }
+      }
+    } else if a == "--prompt" {
+      match argv.next() {
+        Some(p) => prompt_arg = Some(p),
+        None => { eprintln!("jojo: --prompt needs a string"); std::process::exit(64); }
       }
     } else if jam_arg.is_none() {
       jam_arg = Some(a);
@@ -168,7 +196,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
   if let Some(src_path) = check_arg {
     let src = fs::read_to_string(&src_path)
       .map_err(|e| format!("Failed to read {}: {}", src_path, e))?;
-    let out = process_input(&mut nockapp, tas!(b"check"), src.trim_end()).await?;
+    let out = process_input(&mut nockapp, tas!(b"check"), src.trim_end()).await?.text;
     println!("{}", out);
     // the verdict comes from the JSON's leading status field, not a
     // substring scan: +chkj emits {"status":... first and +jesc
@@ -189,8 +217,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
   rl.set_helper(Some(Entry));
   let hist = format!(".{}_history", instance);
   let _ = rl.load_history(&hist);
+  let mut prompt = prompt_arg.unwrap_or_else(|| "jojo> ".to_string());
   loop {
-    match rl.readline("jojo> ") {
+    match rl.readline(&prompt) {
       Ok(entry) => {
         let chunk = entry.trim();
         if chunk.is_empty() {
@@ -200,8 +229,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if chunk == "exit" || chunk == ":exit" || chunk == ":q" {
           break;
         }
-        if let Ok(result) = process_input(&mut nockapp, tas!(b"command"), chunk).await {
-          println!("{}", result);
+        if let Ok(answer) = process_input(&mut nockapp, tas!(b"command"), chunk).await {
+          // an empty answer (a statement, an assignment) prints no line
+          if !answer.text.is_empty() {
+            println!("{}", answer.text);
+          }
+          if let Some(p) = answer.prompt {
+            prompt = p;
+          }
         }
       }
       Err(ReadlineError::Interrupted) => {

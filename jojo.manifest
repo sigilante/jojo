@@ -1,0 +1,4 @@
+# jojo.jam: the module-free Jock REPL kernel (no package manifest: it embeds no module source)
+# built from jock 47838d9 (2026-10-27, sigilante/spec-recomposition), clean tree:
+#   tools/repl.sh jojo.jam
+# kernel sha256: f728b410b6d8545137a3596f80de85176f89eca8244dad8b6958347dd1f09c27

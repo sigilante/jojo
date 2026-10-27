@@ -1,0 +1,12 @@
+# atalante.jam: Atalante's REPL kernel (github.com/sigilante/atalante, app/kernel.jock), package manifest (jock tools/libs.py --manifest format)
+# built from atalante 363fa6f (2026-10-28), with jock 47838d9 (2026-10-27, sigilante/spec-recomposition), clean trees:
+#   tools/atlc.sh kernel --manifest atalante.manifest      (kern.sh over src/ and pkgs/)
+# kernel sha256: ea5b82d0c4d383b1a32a6bbb6059e7b04652c0eccbb1e777185f76b47351dc0f
+# the unsealed jam embeds these module sources and nothing else; the Jock compiler rides as compiled Nock
+array	d8d6a72bbc7583cffe4f41ed72f95b7ba9b0c4ac2deb8c3fb4bb4850d1395ae7	src/array.jock
+atl	d65ddb7785a9e2e3af2c12ed3195ab7ae05d05c0a20e93848817b48113cf4372	src/atl.jock
+interp	3f43831c0bf396a593367f0173bfeb1c47dfeb5e1640614bd07959a93bbc4872	src/interp.jock
+lexer	fb89f5b319eaa6283c9b72dbd121c66ffde1509ef6e8d7ecddabec4e3cd6efcf	src/lexer.jock
+parse	a79e7c5da6706721bc5950a503c567b8376d1ad446b4b8dd3eef9e660731facf	src/parse.jock
+lagoon	3557efac8f8a061fd02455d79c74c8abbe056046421933700422657f58f389a6	pkgs/lagoon.jam
+nasm	dcc478225fa84831cafd6f845a0ed54aea0888ee3bb1f91d912b3350528c70a4	pkgs/nasm.jam

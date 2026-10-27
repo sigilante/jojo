@@ -11,6 +11,12 @@ expression's compiled Nock formula; `exit` (or `:exit` / `:q` /
 Ctrl+D) ends the session. Logging defaults to INFO (set RUST_LOG
 to override).
 
+The prompt is `jojo> ` unless `--prompt STR` says otherwise, and a
+kernel moves it with a `[%prompt cord]` effect: the prompt it names
+shows from the next line on. Atalante's kernel (`atalante.jam`, see
+below) uses this for its apple prompts. An empty answer prints no
+line.
+
 Jojo boots any trap jam: pass the path as the first argument
 (`cargo run -- /path/to/some.jam`; default `jojo.jam`), sealed
 kernels from jock's `kern.sh --sealed` included. Each jam gets
@@ -28,6 +34,22 @@ whole, ready to edit and resubmit); Ctrl-C abandons the current
 buffer; Ctrl-D or `exit` quits. History persists in
 `.jojo_history` (one file per jam instance). Brackets inside
 string and char literals and behind `//` comments don't count.
+
+### Atalante (ATL/APL)
+
+`atalante.jam` is the REPL kernel of [Atalante](https://github.com/sigilante/atalante),
+an APL written in Jock and compiled to Nock. Boot it with the red apple
+as the opening prompt; `)TOGGLE` switches to the green prompt, which
+prints a line's tree instead of evaluating it:
+
+```
+$ cargo run --release -- --prompt '🍎> ' atalante.jam
+🍎> (~R ∊ R ∘.× R) / R ← 1↓⍳R
+```
+
+`atalante.manifest` names the kernel's sha256 and every module source the
+unsealed jam embeds: Atalante's own five, and its two Hoon packages. The
+Jock compiler rides as compiled Nock, as in the other jams here.
 
 ### One-shot checks (the agent lane)
 

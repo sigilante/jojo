@@ -1,10 +1,9 @@
 #![allow(unexpected_cfgs)]
 
+use aes::Aes192;
 use aes_siv::aead::generic_array::GenericArray;
 use aes_siv::aead::KeyInit;
 use aes_siv::siv::{Aes128Siv, Aes256Siv, CmacSiv};
-
-use aes::Aes192;
 type Aes192Siv = CmacSiv<Aes192>;
 
 #[derive(Debug)]
@@ -127,12 +126,13 @@ pub fn ac_aes_siv_de<const N: usize>(
 /// urcrypt functions. To run, use `cargo test --features test_vs_urcrypt`
 /// from the `nockvm/rust/nockvm_crypto` directory.
 mod urcrypt_tests {
-    use super::ac_aes_siv_en;
     use aes_siv::aead::rand_core::CryptoRngCore;
     use rand::rngs::OsRng;
     use urcrypt_sys::{
         urcrypt_aes_siv_data, urcrypt_aes_siva_en, urcrypt_aes_sivb_en, urcrypt_aes_sivc_en,
     };
+
+    use super::ac_aes_siv_en;
 
     #[test]
     fn test_aes_siva_en() {

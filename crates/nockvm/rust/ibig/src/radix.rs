@@ -1,9 +1,10 @@
 //! Information about radixes.
 
+use static_assertions::const_assert;
+
 use crate::arch::word::Word;
 use crate::fast_divide::{FastDivideNormalized, FastDivideSmall};
 use crate::primitive::WORD_BITS;
-use static_assertions::const_assert;
 
 /// Digit and radix type.
 pub(crate) type Digit = u32;

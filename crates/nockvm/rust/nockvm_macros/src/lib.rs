@@ -1,6 +1,7 @@
+use std::mem::size_of;
+
 use proc_macro::TokenStream;
 use quote::quote;
-use std::mem::size_of;
 use syn::{self, LitByteStr};
 
 #[proc_macro]

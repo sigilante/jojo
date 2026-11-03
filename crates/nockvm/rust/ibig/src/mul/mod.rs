@@ -1,13 +1,15 @@
 //! Multiplication.
 
+use alloc::alloc::Layout;
+use core::mem;
+
+use static_assertions::const_assert;
+
 use crate::add;
 use crate::arch::word::{SignedWord, Word};
 use crate::memory::Memory;
 use crate::primitive::{double_word, extend_word, split_double_word};
 use crate::sign::Sign;
-use alloc::alloc::Layout;
-use core::mem;
-use static_assertions::const_assert;
 
 /// If smaller length <= MAX_LEN_SIMPLE, simple multiplication can be used.
 const MAX_LEN_SIMPLE: usize = 24;

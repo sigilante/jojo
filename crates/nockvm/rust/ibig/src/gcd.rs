@@ -1,9 +1,10 @@
 //! Greatest common divisor.
 
+use core::mem;
+
 use crate::ibig::IBig;
 use crate::ops::DivRem;
 use crate::ubig::UBig;
-use core::mem;
 
 impl UBig {
     /// Greatest common divisor.

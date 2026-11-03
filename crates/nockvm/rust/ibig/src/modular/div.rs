@@ -1,10 +1,11 @@
+use core::convert::TryInto;
+use core::ops::{Div, DivAssign};
+
 use crate::arch::word::Word;
 use crate::ibig::IBig;
 use crate::modular::modulo::{Modulo, ModuloLarge, ModuloRepr, ModuloSmall, ModuloSmallRaw};
 use crate::ops::RemEuclid;
 use crate::ubig::UBig;
-use core::convert::TryInto;
-use core::ops::{Div, DivAssign};
 
 impl<'a> Modulo<'a> {
     /// Inverse.

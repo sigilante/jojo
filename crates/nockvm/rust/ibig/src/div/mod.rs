@@ -1,11 +1,12 @@
 //! Division functions.
 
+use alloc::alloc::Layout;
+
 use crate::arch::word::Word;
 use crate::fast_divide::FastDivideNormalized;
 use crate::memory::{self, Memory};
 use crate::primitive::{double_word, extend_word};
 use crate::shift;
-use alloc::alloc::Layout;
 
 mod divide_conquer;
 mod simple;

@@ -1,10 +1,11 @@
 //! Addition and subtraction functions.
 
+use core::cmp::Ordering::*;
+
 use crate::arch::word::{SignedWord, Word};
 use crate::arch::{self};
 use crate::primitive::PrimitiveSigned;
 use crate::sign::Sign::{self, *};
-use core::cmp::Ordering::*;
 
 /// Add one to a word sequence.
 ///

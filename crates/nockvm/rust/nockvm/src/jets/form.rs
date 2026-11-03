@@ -8,27 +8,30 @@ use crate::noun::Noun;
 crate::gdb!();
 
 pub fn jet_scow(context: &mut Context, subject: Noun) -> Result {
-    let aura = slot(subject, 12)?.as_direct()?;
-    let atom = slot(subject, 13)?.as_atom()?;
-    util::scow(&mut context.stack, aura, atom)
+    let space = context.stack.noun_space();
+    let aura = slot(subject, 12, &space)?.as_direct()?;
+    let atom = slot(subject, 13, &space)?.as_atom()?;
+    util::scow(&mut context.stack, aura, atom, &space)
 }
 
 pub mod util {
+    use nockvm_macros::tas;
+    use num_traits::identities::Zero;
+
     use crate::jets;
     use crate::jets::JetErr;
     use crate::mem::NockStack;
-    use crate::noun::{Atom, Cell, DirectAtom, D, T};
-    use nockvm_macros::tas;
-    use num_traits::identities::Zero;
+    use crate::noun::{Atom, Cell, DirectAtom, NounSpace, D, T};
 
     pub fn scow(
         stack: &mut NockStack,
         aura: DirectAtom, // XX: technically this should be Atom?
         atom: Atom,
+        space: &NounSpace,
     ) -> jets::Result {
         match aura.data() {
             tas!(b"ud") => {
-                if atom.as_bitslice().first_one().is_none() {
+                if atom.in_space(space).as_bitslice().first_one().is_none() {
                     return Ok(T(stack, &[D(b'0' as u64), D(0)]));
                 }
 
@@ -43,7 +46,7 @@ pub mod util {
                         lent += 1;
                     }
                 } else {
-                    let mut n = atom.as_indirect()?.as_ubig(stack);
+                    let mut n = atom.as_indirect()?.as_ubig(stack, space);
 
                     while !n.is_zero() {
                         root = T(stack, &[D(b'0' as u64 + (&n % 10u64)), root]);
@@ -60,11 +63,11 @@ pub mod util {
                         if lent % 3 == 0 {
                             let (cell, memory) = Cell::new_raw_mut(stack);
                             (*memory).head = D(b'.' as u64);
-                            (*memory).tail = list.tail();
-                            (*(list.to_raw_pointer_mut())).tail = cell.as_noun();
-                            list = list.tail().as_cell()?;
+                            (*memory).tail = list.in_space(space).tail().noun();
+                            (*(list.to_raw_pointer_mut(space))).tail = cell.as_noun();
+                            list = list.in_space(space).tail().as_cell()?.cell();
                         }
-                        list = list.tail().as_cell()?;
+                        list = list.in_space(space).tail().as_cell()?.cell();
                         lent -= 1;
                     }
 
@@ -78,12 +81,13 @@ pub mod util {
 
 #[cfg(test)]
 mod tests {
+    use ibig::ubig;
+    use nockvm_macros::tas;
+
     use super::*;
     use crate::jets::util::test::{assert_jet, assert_jet_err, init_context, A};
     use crate::jets::JetErr;
     use crate::noun::{Noun, D, T};
-    use ibig::ubig;
-    use nockvm_macros::tas;
 
     // Rust can't handle implicit conversions from u8 to u64
     #[allow(non_snake_case)]

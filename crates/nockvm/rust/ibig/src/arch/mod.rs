@@ -1,8 +1,7 @@
 //! Architecture dependent functionality.
 
-use cfg_if::cfg_if;
-
 pub(crate) use arch_impl::{add, digits, ntt, word};
+use cfg_if::cfg_if;
 
 // Architecture choice. The logic works like this:
 // 1. If the configuration option force_bits is set to 16, 32 or 64, use generic_<n>_bit.

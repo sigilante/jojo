@@ -1,11 +1,12 @@
 //! Comparisons operators.
 
+use core::cmp::Ordering;
+
 use crate::arch::word::Word;
 use crate::ibig::IBig;
 use crate::sign::Sign::*;
 use crate::ubig::Repr::*;
 use crate::ubig::UBig;
-use core::cmp::Ordering;
 
 impl Ord for UBig {
     #[inline]

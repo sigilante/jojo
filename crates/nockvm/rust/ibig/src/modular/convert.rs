@@ -1,5 +1,8 @@
 //! Conversion between Modulo, UBig and IBig.
 
+use alloc::vec::Vec;
+use core::iter;
+
 use crate::arch::word::Word;
 use crate::buffer::Buffer;
 use crate::ibig::IBig;
@@ -10,8 +13,6 @@ use crate::primitive::extend_word;
 use crate::sign::Sign::*;
 use crate::ubig::{Repr, UBig};
 use crate::{div, shift};
-use alloc::vec::Vec;
-use core::iter;
 
 impl ModuloRing {
     /// The ring modulus.
@@ -217,7 +218,7 @@ impl<'a> ModuloLarge<'a> {
                 }
             }
         }
-        vec.extend(iter::repeat(0).take(modulus.len() - vec.len()));
+        vec.extend(iter::repeat_n(0, modulus.len() - vec.len()));
         ModuloLarge::new(vec, ring)
     }
 }

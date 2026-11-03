@@ -7,121 +7,293 @@ edition = "2021"
 name = "jojo"
 path = "src/main.rs"
 
+# The runtime is vendored from nockchain/nockchain at b9dd5af (2026-08-30),
+# the revision numerics' NockApp jet harness pins:  crates/nockvm and
+# crates/nockapp (with jojo's scry roof re-applied in kernel/form.rs),
+# crates/noun-serde{,-derive} that nockapp needs, and the two jet crates
+# copied from numerics lagoon/nockapp:  crates/hoon-float-jets (the
+# rh/rs/rd/rq doors over sdfloat) and crates/lagoon-jets (/lib/lagoon's
+# %i754 arms over sdblas).  main.rs hands lagoon_jets::hot_state() to
+# boot::setup, so every kernel jojo runs gets the float jets.
 [workspace]
 members = [
     "crates/nockapp",
-    "crates/nockvm/rust/nockvm",
-    "crates/nockvm/rust/nockvm_crypto",
-    "crates/nockvm/rust/nockvm_macros",
     "crates/nockvm/rust/ibig",
     "crates/nockvm/rust/murmur3",
+    "crates/nockvm/rust/nockvm",
+    "crates/nockvm/rust/nockvm_macros",
+    "crates/noun-serde",
+    "crates/noun-serde-derive",
+    "crates/hoon-float-jets",
+    "crates/lagoon-jets",
 ]
+resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/sigilante/jojo"
+
+[workspace.lints.rust]
+warnings = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+missing_safety_doc = "allow"
+# Allowed for the nightly-2026-04-03 toolchain bump: the newer clippy newly flags these on
+# pre-existing code across the tree (nockapp, nockup, the verifier crates, ...). Deferred to a
+# dedicated cleanup pass; kept in sync with the `-A` clippy flags in `.bazelrc`.
+result_large_err = "allow"
+unnecessary_cast = "allow"
+unnecessary_sort_by = "allow"
+collapsible_match = "allow"
+manual_checked_ops = "allow"
+while_let_loop = "allow"
+# Style/complexity lints that are pervasive and idiomatic in the numeric / AIR /
+# STARK-prover code (explicit trace-index loops, prover functions with many
+# statement parameters, complex circuit-prover data types). Fixing them would hurt
+# clarity or force churny struct-wrapping without changing behaviour.
+needless_range_loop = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+# Pedantic style lints where the existing form is deliberate: mnemonic hex
+# constants (`0xC0FFEE_42`) and nested indented doc-list structure in the AIR
+# constraint documentation.
+unusual_byte_groupings = "allow"
+doc_overindented_list_items = "allow"
+doc_lazy_continuation = "allow"
+# Noun decoders dispatch on tag cords via `x if x == tas!(b"..")` guards (the
+# `tas!` macro cannot appear in pattern position), and some driver enums carry
+# one intentionally-large proof/artifact variant.
+redundant_guards = "allow"
+large_enum_variant = "allow"
 
 [workspace.dependencies]
-# Core workspace crates
-nockapp = { path = "crates/nockapp" }
-nockvm = { path = "crates/nockvm/rust/nockvm" }
-nockvm_crypto = { path = "crates/nockvm/rust/nockvm_crypto" }
-nockvm_macros = { path = "crates/nockvm/rust/nockvm_macros" }
-ibig = { path = "crates/nockvm/rust/ibig" }
-murmur3 = { path = "crates/nockvm/rust/murmur3" }
-
-# External dependencies from nockchain workspace
-json = "0.12.4"
-lazy_static = "1.4.0"
-libc = "0.2.171"
-memmap2 = "^0.9.5"
-num-derive = "0.4.2"
-signal-hook = "0.3"
-signal-hook-tokio = "0.3.1"
-static_assertions = "1.1.0"
-
-# Sword crypto dependencies
-curve25519-dalek = { version = "4.1.1", default-features = false }
-ed25519-dalek = { version = "2.1.0", default-features = false }
-x25519-dalek = { version = "2.0.0", features = ["static_secrets"], default-features = false }
 aes = { version = "0.8.3", default-features = false }
-aes-siv = { version = "0.7.0", default-features = false }
-sha1 = { version = "0.10.6", default-features = false }
-sha2 = { version = "0.10.8", default-features = false }
-
-# nockapp-specific workspace dependencies
+aes-siv = { version = "0.7.0", default-features = false, features = ["alloc"] }
+alloy = "=1.8.2"
 anyhow = "1.0"
+argon2 = "0.5.3"
+arrayref = "0.3.7"
+askama = "0.12.1"
+assert_cmd = "2.0"
 async-trait = "0.1"
+aws-sdk-s3 = { version = "1", default-features = false, features = [
+    "http-1x",
+    "default-https-client",
+    "rt-tokio",
+] }
 axum = "0.8.1"
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
+backon = { version = "1.6", features = ["tokio-sleep"] }
+bardecoder = "0.5.0"
 bincode = "2.0.0-rc.3"
+bitcoincore-rpc = "0.19.0"
+bitvec = { version = "1.0.1", default-features = true }
 blake3 = { version = "1.5.1", features = ["serde"] }
 bs58 = "0.5.1"
 byteorder = "1.5.0"
-crossterm = "0.28.1"
-chrono = "0.4.40"
-intmap = "3.1.0"
-opentelemetry = { version = "0.27.1", features = ["trace", "logs", "metrics", "internal-logs"] }
-opentelemetry-otlp = { version = "0.27.0", features = ["tonic", "http-proto", "reqwest-client"] }
-opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio"] }
-serde_bytes = { version = "0.11.15", features = ["alloc"] }
-tempfile = "3.3"
-termimad = "0.31.0"
-tonic = "0.12.3"
-tracing-opentelemetry = { version = "0.28.0", features = ["metrics"] }
-tracing-test = "0.2.5"
-yaque = "0.6.6"
-
-# External dependencies
-arrayref = "0.3.7"
-argon2 = "0.5.3"
-bardecoder = "0.5.0"
-bitcoincore-rpc = "0.19.0"
-bitvec = "1.0.1"
 bytes = "1.5.0"
+cbor4ii = "1.0.0"
 cfg-if = "1.0.0"
+chrono = "0.4.40"
 clap = "4.4.4"
-num-traits = "0.2"
-pin-project-lite = "0.2.16"
-criterion = { git = "https://github.com/vlovich/criterion.rs.git", rev = "9b485aece85a3546126b06cc25d33e14aba829b3", features = ["html_reports"] }
+colored = "2.0"
+config = "0.15"
+console-subscriber = "0.4.1"
+criterion = { git = "https://github.com/vlovich/criterion.rs.git", rev = "9b485aece85a3546126b06cc25d33e14aba829b3", features = [
+    "html_reports",
+] }
+crossterm = "0.29"
+curve25519-dalek = { version = "4.1.1", default-features = false }
+dashmap = "6.1.0"
+deadpool-diesel = { version = "0.6.1", features = ["rt_tokio_1", "sqlite"] }
+diesel = { version = "2.1.4", features = ["sqlite"] }
+diesel_migrations = { version = "2.3.2", features = ["sqlite"] }
 dirs = "6.0.0"
+divan = "0.1.21"
+ed25519-dalek = { version = "2.1.0", default-features = false }
 either = "1.9.0"
 equix = "0.2.2"
+flate2 = "1.1.5"
+fs_extra = "1.3"
 futures = "0.3.31"
-getrandom = { version = "0.2.15", features = ["std"] }
-gnort = "0.1.1"
+gdt-cpus = "25.5.0"
+getrandom = { version = "0.3.3", features = ["std"] }
+glob = "0.3"
+gnort = "0.2.0"
+handlebars = "6.3.2"
+hex = "0.4"
 hex-literal = "1.0.0"
-hickory-resolver = { version = "0.25.0-alpha.4", features = ["system-config"] }
 hickory-proto = "0.25.0-alpha.4"
+hickory-resolver = { version = "0.25.0-alpha.4", features = ["system-config"] }
+hmac = "0.12.1"
 image = "0.24.7"
+instant-acme = "0.7.2"
+intmap = "3.1.0"
+lazy_static = "1.4.0"
+libc = "0.2.171"
 libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", rev = "da0017ee887a868e231ed78c7de892779c17800d" }
-qrcode = "0.13"
+libsqlite3-sys = { version = "0.35.0", features = ["bundled"] }
+memmap2 = "^0.9.5"
+nu-ansi-term = "0.50"
+num-bigint = "0.4.6"
+num-derive = "0.4.2"
+num-traits = { version = "0.2", default-features = true }
+num_cpus = "1.16.0"
+once_cell = "1.21.3"
+op-alloy = "=0.23.1"
+openssl-sys = "0.9"
+opentelemetry = { version = "0.30.0", features = [
+    "trace",
+    "logs",
+    "metrics",
+    "internal-logs",
+] }
+opentelemetry-otlp = { version = "0.30.0", features = [
+    "tonic",
+    "http-proto",
+    "reqwest-client",
+] }
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
+parking_lot = "0.12.4"
+pin-project-lite = "0.2.16"
+predicates = "3.0"
+proc-macro2 = "1.0.91"
+proptest = "1.9.0"
+prost = "0.14.1"
+prost-build = "0.14.1"
+protoc-bin-vendored = "3.2.0"
+prost-types = "0.14.1"
+qrcode = "0.14.1"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0"
-rand = "0.8.5"
+quote = "1.0.37"
+rand = { version = "0.9.2", default-features = true, features = ["std"] }
 ratatui = "0.29.0"
 rayon = "1.8.0"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "charset"] }
+rcgen = "0.14.3"
+regex = "1.10.4"
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "http2",
+    "charset",
+    "json",
+    "blocking",
+] }
+rkyv = "0.8.13"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+rustix = { version = "0.38", features = ["fs", "mm"] }
+rustls = "0.23.0"
+rustls-pemfile = "2.0.0"
+rustls-pki-types = "1.13.1"
 serde = "1.0.217"
+serde_bytes = { version = "0.11.15", features = ["alloc"] }
+serde_cbor = "0.11"
 serde_json = "1.0.104"
+serde_yaml = "0.9.34"
+sha1 = { version = "0.10.6", default-features = false }
+sha2 = { version = "0.10.8", default-features = false }
 sha3 = "0.10.8"
+signal-hook = "0.3"
+signal-hook-tokio = "0.3.1"
 slotmap = "1.0.7"
-smallvec = "1.13.2"
+smallvec = "1.15.1"
+snmalloc-rs = { git = "https://github.com/litlep-nibbyt/snmalloc.git", rev = "060d5b9fa1c5777a52deae8dbdd82da91babf35f", default-features = false, features = ["build_cc", "usewait-on-address"] }
+static_assertions = "1.1.0"
+strum = { version = "0.27.2", features = ["derive"] }
+syn = { version = "2.0.39", features = ["full"] }
+tar = "0.4.44"
+tempfile = "3.3"
 termcolor = "1.4"
-testcontainers = { git = "https://github.com/bitemyapp/testcontainers-rs.git", rev = "54851fd9faf9b9cded9d681b46f87c056880d870" }
+termimad = "0.33.0"
+test-log = "0.2.18"
+testcontainers = "0.27.3"
 thiserror = "2.0.11"
-tokio = { version = "1.32", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "rt", "signal"] }
+tikv-jemallocator = { version = "0.6" }
+tiny-keccak = { version = "2", features = ["keccak"] }
+tokio = { version = "1.32", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "net",
+    "rt-multi-thread",
+    "rt",
+    "signal",
+    "tracing",
+] }
+tokio-rustls = "0.26.0"
+tokio-stream = "0.1"
 tokio-util = "0.7.11"
+toml = "0.9.8"
+tonic = { version = "0.14.0", features = ["tls-webpki-roots"] }
+tonic-build = "0.14"
+tonic-health = "0.14.2"
+tonic-prost = "0.14.0"
+tonic-prost-build = "0.14.0"
+tonic-reflection = "0.14.0"
+tonic-web = "0.14.5"
+tower-http = { version = "0.6", features = ["fs"] }
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.18", features = ["ansi", "env-filter", "registry"] }
+tracing-appender = "0.2.4"
+tracing-core = "0.1"
+tracing-opentelemetry = { version = "0.31.0", features = ["metrics"] }
+tracing-subscriber = { version = "0.3.18", features = [
+    "ansi",
+    "env-filter",
+    "registry",
+] }
+tracing-test = "0.2.5"
+tracing-tracy = { version = "0.11.4" }
+tracy-client = { version = "0.18.2" }
+unroll = "0.1.5"
+uuid = { version = "1.23.1", features = ["v4"] }
 vergen = "8.3.2"
 void = "1.0.2"
-num_cpus = "1.16.0"
+walkdir = "2.5.0"
+webpki-roots = "1.0.2"
+which = "8.0"
+x25519-dalek = { version = "2.0.0", features = [
+    "static_secrets",
+], default-features = false }
+x509-parser = "0.17.0"
+yaque = "0.6.6"
+
+
+# Pure-Rust SoftFloat / SoftBLAS (sigilante/RustFloat), the jets' arithmetic.
+sdfloat = { git = "https://github.com/sigilante/RustFloat.git", rev = "f7d449c" }
+sdblas = { git = "https://github.com/sigilante/RustFloat.git", rev = "f7d449c" }
+
+[workspace.dependencies.ibig]
+path = "crates/nockvm/rust/ibig"
+
+[workspace.dependencies.murmur3]
+path = "crates/nockvm/rust/murmur3"
+
+[workspace.dependencies.nockapp]
+path = "crates/nockapp"
+
+[workspace.dependencies.nockvm]
+path = "crates/nockvm/rust/nockvm"
+
+[workspace.dependencies.nockvm_crypto]
+path = "crates/nockvm/rust/nockvm_crypto"
+
+[workspace.dependencies.nockvm_macros]
+path = "crates/nockvm/rust/nockvm_macros"
+
+[workspace.dependencies.noun-serde]
+path = "crates/noun-serde"
+
+[workspace.dependencies.noun-serde-derive]
+path = "crates/noun-serde-derive"
 
 [dependencies]
-# Use workspace dependencies
 nockapp.workspace = true
-nockvm.workspace = true  
+nockvm.workspace = true
 nockvm_macros.workspace = true
+lagoon-jets = { path = "crates/lagoon-jets" }
 tokio.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
@@ -129,6 +301,43 @@ thiserror.workspace = true
 bytes.workspace = true
 rustyline = { version = "15", features = ["derive"] }
 
+[profile.dev]
+# Keep normal target/debug artifacts inspectable, but use release-like runtime
+# settings so prover/miner debug runs do not behave like unoptimized builds.
+opt-level = 3
+debug = "full"
+strip = "none"
+lto = "thin"
+codegen-units = 1
+incremental = false
+debug-assertions = false
+overflow-checks = false
 
+[profile.dev.package."*"]
+opt-level = 3
+debug = "full"
+codegen-units = 1
 
+[profile.test]
+inherits = "dev"
 
+[profile.release]
+lto = "thin"
+opt-level = 3
+codegen-units = 1
+debug = 1
+
+[profile.release.package."*"]
+opt-level = 3
+codegen-units = 1
+debug = 1
+
+# Memory profiling with bytehound. Keeps release optimizations but emits full debug info.
+[profile.bytehound]
+inherits = "release"
+debug = 2
+
+[profile.bytehound.package."*"]
+opt-level = 3
+codegen-units = 1
+debug = 2

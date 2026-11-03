@@ -1,8 +1,9 @@
 //! Comparisons.
 
+use core::ptr;
+
 use crate::modular::modulo::{Modulo, ModuloLarge, ModuloRepr, ModuloSmall};
 use crate::modular::modulo_ring::{ModuloRing, ModuloRingLarge, ModuloRingSmall};
-use core::ptr;
 
 /// Equality is identity: two rings are not equal even if they have the same modulus.
 impl PartialEq for ModuloRing {

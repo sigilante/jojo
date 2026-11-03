@@ -1,8 +1,9 @@
 //! Formatting modular rings and modular numbers.
 
+use core::fmt::{self, Binary, Debug, Display, Formatter, LowerHex, Octal, UpperHex};
+
 use crate::modular::modulo::{Modulo, ModuloLarge, ModuloRepr, ModuloSmall};
 use crate::modular::modulo_ring::{ModuloRing, ModuloRingLarge, ModuloRingRepr, ModuloRingSmall};
-use core::fmt::{self, Binary, Debug, Display, Formatter, LowerHex, Octal, UpperHex};
 
 macro_rules! impl_fmt {
     ($t:ident) => {

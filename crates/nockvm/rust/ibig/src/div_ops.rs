@@ -1,5 +1,10 @@
 //! Division operators.
 
+use core::convert::TryFrom;
+use core::fmt::Debug;
+use core::mem;
+use core::ops::{Div, DivAssign, Rem, RemAssign};
+
 use crate::arch::word::Word;
 use crate::buffer::Buffer;
 use crate::ibig::IBig;
@@ -10,10 +15,6 @@ use crate::sign::Sign::*;
 use crate::ubig::Repr::*;
 use crate::ubig::UBig;
 use crate::{div, helper_macros, shift};
-use core::convert::TryFrom;
-use core::fmt::Debug;
-use core::mem;
-use core::ops::{Div, DivAssign, Rem, RemAssign};
 
 impl Div<UBig> for UBig {
     type Output = UBig;

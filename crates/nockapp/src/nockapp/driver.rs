@@ -1,14 +1,17 @@
-use crate::noun::slab::NounSlab;
-use futures::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
+
+use futures::future::Future;
 use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
 use tokio::task::JoinSet;
 use tracing::instrument;
 
 use super::error::NockAppError;
+use super::metrics::NockAppMetrics;
 use super::wire::WireRepr;
 use super::NockAppExit;
+use crate::noun::slab::NounSlab;
 
 pub type IODriverFuture = Pin<Box<dyn Future<Output = Result<(), NockAppError>> + Send>>;
 pub type IODriverFn = Box<dyn FnOnce(NockAppHandle) -> IODriverFuture>;
@@ -42,6 +45,7 @@ pub struct NockAppHandle {
     pub io_sender: ActionSender,
     pub effect_sender: Arc<EffectSender>,
     pub effect_receiver: Mutex<EffectReceiver>,
+    pub metrics: Arc<NockAppMetrics>,
     pub exit: NockAppExit,
 }
 
@@ -57,6 +61,7 @@ pub enum IOAction {
         wire: WireRepr,
         poke: NounSlab,
         ack_channel: oneshot::Sender<PokeResult>,
+        timeout: Option<Duration>,
     },
     /// Peek request to [`crate::NockApp`]
     Peek {
@@ -78,6 +83,25 @@ impl NockAppHandle {
                 wire,
                 poke,
                 ack_channel,
+                timeout: None,
+            })
+            .await?;
+        Ok(())
+    }
+
+    pub async fn send_poke_timeout(
+        &self,
+        ack_channel: oneshot::Sender<PokeResult>,
+        wire: WireRepr,
+        poke: NounSlab,
+        timeout: Duration,
+    ) -> Result<(), NockAppError> {
+        self.io_sender
+            .send(IOAction::Poke {
+                wire,
+                poke,
+                ack_channel,
+                timeout: Some(timeout),
             })
             .await?;
         Ok(())
@@ -95,6 +119,7 @@ impl NockAppHandle {
             wire,
             poke,
             ack_channel,
+            timeout: None,
         })?)
     }
 
@@ -102,6 +127,18 @@ impl NockAppHandle {
     pub async fn poke(&self, wire: WireRepr, poke: NounSlab) -> Result<PokeResult, NockAppError> {
         let (ack_channel, ack_future) = oneshot::channel();
         self.send_poke(ack_channel, wire, poke).await?;
+        Ok(ack_future.await?)
+    }
+
+    pub async fn poke_timeout(
+        &self,
+        wire: WireRepr,
+        poke: NounSlab,
+        timeout: Duration,
+    ) -> Result<PokeResult, NockAppError> {
+        let (ack_channel, ack_future) = oneshot::channel();
+        self.send_poke_timeout(ack_channel, wire, poke, timeout)
+            .await?;
         Ok(ack_future.await?)
     }
 
@@ -162,8 +199,22 @@ impl NockAppHandle {
     #[instrument(skip(self))]
     pub async fn next_effect(&self) -> Result<NounSlab, NockAppError> {
         let mut effect_receiver = self.effect_receiver.lock().await;
-        tracing::debug!("Waiting for recv on next effect");
-        Ok(effect_receiver.recv().await?)
+        tracing::trace!("Waiting for recv on next effect");
+
+        match effect_receiver.recv().await {
+            Ok(effect) => {
+                tracing::trace!("Received effect successfully");
+                Ok(effect)
+            }
+            Err(e @ broadcast::error::RecvError::Closed) => {
+                // We don't shutdown here, instead we allow the driver to handle the error
+                Err(e.into())
+            }
+            Err(e @ broadcast::error::RecvError::Lagged(n)) => {
+                let _ = self.metrics.next_effect_lagged_error.fetch_add(n as usize);
+                Err(e.into())
+            }
+        }
     }
 
     #[instrument(skip(self))]
@@ -171,6 +222,7 @@ impl NockAppHandle {
         let io_sender = self.io_sender.clone();
         let effect_sender = self.effect_sender.clone();
         let effect_receiver = Mutex::new(effect_sender.subscribe());
+        let metrics = self.metrics.clone();
         let exit = self.exit.clone();
         (
             self,
@@ -178,6 +230,7 @@ impl NockAppHandle {
                 io_sender,
                 effect_sender,
                 effect_receiver,
+                metrics,
                 exit,
             },
         )

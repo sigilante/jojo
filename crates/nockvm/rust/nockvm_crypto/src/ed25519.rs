@@ -114,9 +114,10 @@ mod tests {
 /// urcrypt functions. To run, use `cargo test --features test_vs_urcrypt`
 /// from the `nockvm/rust/nockvm_crypto` directory.
 mod urcrypt_tests {
-    use super::{ac_ed_puck, ac_ed_shar, ac_ed_sign, ac_ed_veri};
     use ibig::ubig;
     use urcrypt_sys::{urcrypt_ed_puck, urcrypt_ed_shar, urcrypt_ed_sign, urcrypt_ed_veri};
+
+    use super::{ac_ed_puck, ac_ed_shar, ac_ed_sign, ac_ed_veri};
 
     #[test]
     fn test_ed_puck() {

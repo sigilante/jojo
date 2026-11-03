@@ -1,12 +1,13 @@
 //! Parse in a non-power-of-two radix.
 
+use alloc::vec;
+
 use crate::arch::word::Word;
 use crate::buffer::Buffer;
 use crate::error::ParseError;
 use crate::mul;
 use crate::radix::{self, Digit};
 use crate::ubig::UBig;
-use alloc::vec;
 
 /// Parse in chunks of CHUNK_LEN * digits_per_word.
 const CHUNK_LEN: usize = 256;
@@ -72,6 +73,7 @@ fn parse_large(bytes: &[u8], radix: Digit) -> Result<UBig, ParseError> {
     assert!(bytes.len() > chunk_bytes);
 
     // Calculate radix^(CHUNK_LEN<<i).
+    // FIXME: This use of ibig's pow will leak memory.
     let mut radix_powers = vec![UBig::from_word(radix_info.range_per_word).pow(CHUNK_LEN)];
 
     // while (chunk_bytes << radix_powers.len()) < bytes.len()

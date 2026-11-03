@@ -1,11 +1,12 @@
 //! Simple multiplication algorithm.
 
+use alloc::alloc::Layout;
+
 use crate::arch::word::{SignedWord, Word};
 use crate::arch::{self};
 use crate::memory::{self, Memory};
 use crate::mul::{self, helpers};
 use crate::sign::Sign::{self, *};
-use alloc::alloc::Layout;
 
 /// Split larger length into chunks of CHUNK_LEN..2 * CHUNK_LEN for memory locality.
 const CHUNK_LEN: usize = 1024;

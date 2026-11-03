@@ -97,6 +97,29 @@ copies of a jam under different file stems get separate instances.
 
 4. Type `exit` (or press Ctrl+D) to end the session.
 
+### The runtime and its jets
+
+The NockVM and NockApp crates are vendored from
+[nockchain](https://github.com/nockchain/nockchain) at `b9dd5af`
+(2026-08-30), the revision numerics' NockApp jet harness pins, with
+jojo's scry roof applied in `crates/nockapp/src/kernel/form.rs`. Jojo
+boots every kernel with a hot table holding NockVM's own jets, plus
+the jets from numerics' `lagoon/nockapp` harness. `crates/hoon-float-jets`
+jets the add, sub, mul, div, sqt and comparison arms of hoon-138's
+`rh rs rd rq` doors. `crates/lagoon-jets` jets 28 `/lib/lagoon` arms on
+`%i754` rays. Both are bit-exact over
+[sdfloat/sdblas](https://github.com/sigilante/RustFloat). A kernel's
+floating point therefore runs jetted. Atalante's float `+/` over 1e5
+elements drops from 53 s to 29 s.
+
+- `HOON_FLOAT_JET_DISABLE=1` leaves the float doors to the Nock, for a comparison run.
+- `NOCK_TEST_JETS=k.138/one/two/tri/rd/add,...` runs jet and Nock side by side and bails on any mismatch.
+- `HOON_FLOAT_JET_TRACE=1` and `LAGOON_JET_TRACE=1` print one line per jet call.
+
+The toolchain is the nightly in `rust-toolchain.toml`. A checkpoint
+written by the old runtime is untested under this one, so boot a new
+kernel jam under a fresh stem.
+
 ### Examples
 
 ```

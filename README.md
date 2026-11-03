@@ -45,7 +45,16 @@ prints a line's tree instead of evaluating it:
 ```
 $ cargo run --release -- --prompt '🍎> ' atalante.jam
 🍎> (~R ∊ R ∘.× R) / R ← 1↓⍳R
+🍎> {⍵≤1: 1 ⋄ ⍵×∇ ⍵-1} 5
+120
+🍎> X ← 'sing' 'goddess' 'sing' 'of' 'the' 'rage'
+🍎> X[⍋X]
+'goddess' 'of' 'rage' 'sing' 'sing' 'the'
 ```
+
+A dfn that spans lines is typed as jojo's own continuation: an open
+`{` keeps reading until the braces close, and the kernel receives the
+lines as one entry (Atalante's D-69).
 
 `atalante.manifest` names the kernel's sha256 and every module source the
 unsealed jam embeds: Atalante's own five, and its two Hoon packages. The

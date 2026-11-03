@@ -1,12 +1,12 @@
 # atalante.jam: Atalante's REPL kernel (github.com/sigilante/atalante, app/kernel.jock), package manifest (jock tools/libs.py --manifest format)
-# built from atalante 58fce2c (2026-11-03, P8: dfns with guards), with jock 47838d9 (2026-10-27, sigilante/spec-recomposition), clean trees:
+# built from atalante f7a05a8 (2026-11-03, P8: dfns with guards; P9: nested arrays), with jock 47838d9 (2026-10-27, sigilante/spec-recomposition), clean trees:
 #   tools/atlc.sh kernel --manifest atalante.manifest      (kern.sh over src/ and pkgs/)
-# kernel sha256: 9edc36b01f854ea502da7d58714041bb2123ce453f1b10823f3f552c82901176
+# kernel sha256: fe2442a2469095a33e1916f7357930cf84c684ddded4a3ebe6d1c4aaac81e56f
 # the unsealed jam embeds these module sources and nothing else; the Jock compiler rides as compiled Nock
-array	d8d6a72bbc7583cffe4f41ed72f95b7ba9b0c4ac2deb8c3fb4bb4850d1395ae7	src/array.jock
+array	fd448e6fed5d38c4500e4be86c3500b35ab3c49494aba2fe45112b4257b195d8	src/array.jock
 atl	f1455258f986da4af4a5535ef6ae9b29c4908675ed2d9a34702486eb5ae7f63f	src/atl.jock
-interp	43d02ec27502ce5c4ae0664bcd2ebd68090b0658ababb4e4fa0ca2b47866630e	src/interp.jock
-lexer	9af770c2ac00ea220cc357968dccedd7a3e38ae17eb8a06c2d45fcff147f7001	src/lexer.jock
-parse	796f5966fabc242f87aa6fb8727efb30e3218cadfa3fec32334e2be1d4c6f4f9	src/parse.jock
+interp	454381bb0f0d4beaa22c474ce50df5d9299624a13de1651ccf37acc86a161691	src/interp.jock
+lexer	24a15513441fc8b771799f1e59f01b44dc253a3d6924fa0a167b1e7592dfb81f	src/lexer.jock
+parse	a36968288621dccd01b2e496538767455881cbed8b07fd5c1715e52d42f6d7ac	src/parse.jock
 lagoon	3557efac8f8a061fd02455d79c74c8abbe056046421933700422657f58f389a6	pkgs/lagoon.jam
 nasm	dcc478225fa84831cafd6f845a0ed54aea0888ee3bb1f91d912b3350528c70a4	pkgs/nasm.jam

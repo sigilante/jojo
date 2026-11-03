@@ -1,9 +1,10 @@
 //! Operators on the sign of [IBig].
 
+use core::ops::Neg;
+
 use crate::ibig::IBig;
 use crate::ops::{Abs, UnsignedAbs};
 use crate::ubig::UBig;
-use core::ops::Neg;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

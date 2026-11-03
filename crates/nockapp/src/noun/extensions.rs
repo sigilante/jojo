@@ -1,187 +1,45 @@
-use nockvm::interpreter::Error;
-use nockvm::mem::NockStack;
+use std::ptr::copy_nonoverlapping;
 
-use crate::noun::slab::NounSlab;
-use crate::{Noun, Result, ToBytes, ToBytesExt};
-use bincode::{Decode, Encode};
 use bytes::Bytes;
-use core::str;
-use nockvm::noun::{Atom, IndirectAtom, NounAllocator, D};
-use nockvm::serialization::{cue, jam};
-use std::iter::Iterator;
+use either::Either;
+use intmap::IntMap;
+use nockvm::ext::AtomExt as CoreAtomExt;
+pub use nockvm::ext::{IndirectAtomExt, JammedNoun, NounExt};
+use nockvm::interpreter::{interpret, Context, Error as NockError};
+use nockvm::noun::{
+    Atom, BrandedNounHandle, BrandedNounSpace, Cell, IndirectAtom, NounAllocator, NounSpace, D,
+};
+use noun_serde::NounEncode;
 
-pub trait NounExt {
-    fn cue_bytes(stack: &mut NockStack, bytes: &Bytes) -> Result<Noun, Error>;
-    fn cue_bytes_slice(stack: &mut NockStack, bytes: &[u8]) -> Result<Noun, Error>;
-    fn jam_self(self, stack: &mut NockStack) -> JammedNoun;
-    fn list_iter(self) -> impl Iterator<Item = Noun>;
-    fn eq_bytes(self, bytes: impl AsRef<[u8]>) -> bool;
-}
-
-impl NounExt for Noun {
-    fn cue_bytes(stack: &mut NockStack, bytes: &Bytes) -> Result<Noun, Error> {
-        let atom = Atom::from_bytes(stack, bytes);
-        cue(stack, atom)
-    }
-
-    // generally, we should be using `cue_bytes`, but if we're not going to be passing it around
-    // its OK to just cue a byte slice to avoid copying.
-    fn cue_bytes_slice(stack: &mut NockStack, bytes: &[u8]) -> Result<Noun, Error> {
-        let atom = unsafe {
-            IndirectAtom::new_raw_bytes(stack, bytes.len(), bytes.as_ptr()).normalize_as_atom()
-        };
-        cue(stack, atom)
-    }
-
-    fn jam_self(self, stack: &mut NockStack) -> JammedNoun {
-        JammedNoun::from_noun(stack, self)
-    }
-
-    fn list_iter(self) -> impl Iterator<Item = Noun> {
-        NounListIterator(self)
-    }
-
-    fn eq_bytes(self, bytes: impl AsRef<[u8]>) -> bool {
-        if let Ok(a) = self.as_atom() {
-            a.eq_bytes(bytes)
-        } else {
-            false
-        }
-    }
-}
+use crate::noun::slab::{NockJammer, NounSlab};
+use crate::{Noun, Result, ToBytes, ToBytesExt};
 
 // TODO: This exists largely because nockapp doesn't own the [`Atom`] type from [`nockvm`].
 // TODO: The next step for this should be to lower the methods on this trait to a concrete `impl` stanza for [`Atom`] in [`nockvm`].
 // TODO: In the course of doing so, we should split out a serialization trait that has only the [`AtomExt::from_value`] method as a public API in [`nockvm`].
 // The goal would be to canonicalize the Atom representations of various Rust types. When it needs to be specialized, users can make a newtype.
-pub trait AtomExt {
+pub trait AtomExt: CoreAtomExt {
     fn from_bytes<A: NounAllocator>(allocator: &mut A, bytes: &Bytes) -> Atom;
     fn from_value<A: NounAllocator, T: ToBytes>(allocator: &mut A, value: T) -> Result<Atom>;
-    fn eq_bytes(self, bytes: impl AsRef<[u8]>) -> bool;
-    fn to_bytes_until_nul(self) -> Result<Vec<u8>>;
-    fn into_string(self) -> Result<String>;
 }
 
 impl AtomExt for Atom {
     // TODO: This is iffy. What byte representation is it expecting and why?
     fn from_bytes<A: NounAllocator>(allocator: &mut A, bytes: &Bytes) -> Atom {
-        unsafe {
-            IndirectAtom::new_raw_bytes(allocator, bytes.len(), bytes.as_ptr()).normalize_as_atom()
-        }
+        <Self as CoreAtomExt>::from_bytes(allocator, bytes.as_ref())
     }
 
     // TODO: This is worth making into a public/supported part of [`nockvm`]'s API.
     fn from_value<A: NounAllocator, T: ToBytes>(allocator: &mut A, value: T) -> Result<Atom> {
-        unsafe {
-            let data: Bytes = value.as_bytes()?;
-            Ok(
-                IndirectAtom::new_raw_bytes(allocator, data.len(), data.as_ptr())
-                    .normalize_as_atom(),
-            )
-        }
-    }
-
-    /** Test for byte equality, ignoring trailing 0s in the Atom representation
-        beyond the length of the bytes compared to
-    */
-    fn eq_bytes(self, bytes: impl AsRef<[u8]>) -> bool {
-        let bytes_ref = bytes.as_ref();
-        let atom_bytes = self.as_ne_bytes();
-        // TODO: Turn this into a match on a cmp?
-        #[allow(clippy::comparison_chain)]
-        if bytes_ref.len() > atom_bytes.len() {
-            false
-        } else if bytes_ref.len() == atom_bytes.len() {
-            atom_bytes == bytes_ref
-        } else {
-            // check for nul bytes beyond comparing bytestring
-            for b in &atom_bytes[bytes_ref.len()..] {
-                if *b != 0u8 {
-                    return false;
-                }
-            }
-            &atom_bytes[0..bytes_ref.len()] == bytes_ref
-        }
-    }
-
-    fn to_bytes_until_nul(self) -> Result<Vec<u8>> {
-        let bytes = str::from_utf8(self.as_ne_bytes())?;
-        Ok(bytes.trim_end_matches('\0').as_bytes().to_vec())
-    }
-
-    fn into_string(self) -> Result<String> {
-        let str = str::from_utf8(self.as_ne_bytes())?;
-        Ok(str.trim_end_matches('\0').to_string())
+        let data: Bytes = value.as_bytes()?;
+        Ok(<Self as CoreAtomExt>::from_bytes(allocator, data.as_ref()))
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Encode, Decode)]
-pub struct JammedNoun(#[bincode(with_serde)] pub Bytes);
-
-impl JammedNoun {
-    pub fn new(bytes: Bytes) -> Self {
-        Self(bytes)
-    }
-
-    pub fn from_noun(stack: &mut NockStack, noun: Noun) -> Self {
-        let jammed_atom = jam(stack, noun);
-        JammedNoun(Bytes::copy_from_slice(jammed_atom.as_ne_bytes()))
-    }
-
-    pub fn cue_self(&self, stack: &mut NockStack) -> Result<Noun, Error> {
-        let atom = unsafe {
-            IndirectAtom::new_raw_bytes(stack, self.0.len(), self.0.as_ptr()).normalize_as_atom()
-        };
-        cue(stack, atom)
-    }
-}
-
-impl From<&[u8]> for JammedNoun {
-    fn from(bytes: &[u8]) -> Self {
-        JammedNoun::new(Bytes::copy_from_slice(bytes))
-    }
-}
-
-impl From<Vec<u8>> for JammedNoun {
-    fn from(byte_vec: Vec<u8>) -> Self {
-        JammedNoun::new(Bytes::from(byte_vec))
-    }
-}
-
-impl AsRef<Bytes> for JammedNoun {
-    fn as_ref(&self) -> &Bytes {
-        &self.0
-    }
-}
-
-impl AsRef<[u8]> for JammedNoun {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl Default for JammedNoun {
-    fn default() -> Self {
-        JammedNoun::new(Bytes::new())
-    }
-}
-
-pub struct NounListIterator(Noun);
-
-impl Iterator for NounListIterator {
-    type Item = Noun;
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Ok(it) = self.0.as_cell() {
-            self.0 = it.tail();
-            Some(it.head())
-        } else if unsafe { self.0.raw_equals(&D(0)) } {
-            None
-        } else {
-            panic!("Improper list terminator: {:?}", self.0)
-        }
-    }
-}
-
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement `IntoNoun` safely",
+    label = "use `IntoSlab` or allocate into a caller-owned allocator"
+)]
 pub trait IntoNoun {
     fn into_noun(self) -> Noun;
 }
@@ -198,8 +56,8 @@ impl IntoNoun for u64 {
 }
 
 impl FromAtom for u64 {
-    fn from_atom(atom: Atom) -> Self {
-        atom.as_u64().unwrap_or_else(|err| {
+    fn from_atom(atom: Atom, space: &NounSpace) -> Self {
+        atom.in_space(space).as_u64().unwrap_or_else(|err| {
             panic!(
                 "Panicked with {err:?} at {}:{} (git sha: {:?})",
                 file!(),
@@ -215,35 +73,19 @@ impl IntoNoun for Noun {
         self
     }
 }
-impl IntoNoun for &str {
-    fn into_noun(self) -> Noun {
-        let mut slab = NounSlab::new();
-        let contents_atom = unsafe {
-            let bytes = self.to_bytes().unwrap_or_else(|err| {
-                panic!(
-                    "Panicked with {err:?} at {}:{} (git sha: {:?})",
-                    file!(),
-                    line!(),
-                    option_env!("GIT_SHA")
-                )
-            });
-            IndirectAtom::new_raw_bytes_ref(&mut slab, bytes.as_slice()).normalize_as_atom()
-        };
-        Noun::from_atom(contents_atom)
-    }
-}
+impl !IntoNoun for &str {}
 
 pub trait AsSlabVec {
-    fn as_slab_vec(&self) -> Vec<NounSlab>;
+    fn as_slab_vec(&self, space: &NounSpace) -> Vec<NounSlab>;
 }
 
 impl AsSlabVec for Noun {
-    fn as_slab_vec(&self) -> Vec<NounSlab> {
+    fn as_slab_vec(&self, space: &NounSpace) -> Vec<NounSlab> {
         let noun_list = *self;
         let mut slab_vec = Vec::new();
-        for noun in noun_list.list_iter() {
+        for noun in noun_list.in_space(space).list_iter() {
             let mut new_slab = NounSlab::new();
-            new_slab.copy_into(noun);
+            new_slab.copy_into(noun.noun(), space);
             slab_vec.push(new_slab);
         }
         slab_vec
@@ -251,17 +93,18 @@ impl AsSlabVec for Noun {
 }
 
 impl AsSlabVec for NounSlab {
-    fn as_slab_vec(&self) -> Vec<NounSlab> {
+    fn as_slab_vec(&self, _space: &NounSpace) -> Vec<NounSlab> {
         let noun_list = unsafe { self.root() };
-        noun_list.as_slab_vec()
+        let space = self.noun_space();
+        noun_list.as_slab_vec(&space)
     }
 }
 
 pub trait FromAtom {
-    fn from_atom(atom: Atom) -> Self;
+    fn from_atom(atom: Atom, space: &NounSpace) -> Self;
 }
 impl FromAtom for Noun {
-    fn from_atom(atom: Atom) -> Self {
+    fn from_atom(atom: Atom, _space: &NounSpace) -> Self {
         atom.as_noun()
     }
 }
@@ -273,8 +116,390 @@ pub trait IntoSlab {
 impl IntoSlab for &str {
     fn into_slab(self) -> NounSlab {
         let mut slab = NounSlab::new();
-        let noun = self.into_noun();
+        let bytes = self.to_bytes().unwrap_or_else(|err| {
+            panic!(
+                "Panicked with {err:?} at {}:{} (git sha: {:?})",
+                file!(),
+                line!(),
+                option_env!("GIT_SHA")
+            )
+        });
+        let noun =
+            <IndirectAtom as IndirectAtomExt>::from_bytes(&mut slab, bytes.as_slice()).as_noun();
         slab.set_root(noun);
         slab
+    }
+}
+
+const CACHED_MUG_METADATA_MASK: u64 = 0x7fff_ffff;
+
+pub trait NounAllocatorExt {
+    fn copy_into(&mut self, noun: Noun, space: &NounSpace) -> Noun;
+}
+
+impl<A: NounAllocator> NounAllocatorExt for A {
+    fn copy_into(&mut self, noun: Noun, space: &NounSpace) -> Noun {
+        let mut copied: IntMap<u64, Noun> = IntMap::new();
+        let mut stack = Vec::with_capacity(32);
+        let mut res = D(0);
+        stack.push((noun, &mut res as *mut Noun));
+        while let Some((noun, dest)) = stack.pop() {
+            match noun.as_either_direct_allocated() {
+                Either::Left(direct) => unsafe {
+                    *dest = direct.as_noun();
+                },
+                Either::Right(allocated) => match allocated.as_either() {
+                    Either::Left(indirect) => {
+                        let indirect_handle = indirect.as_atom().in_space(space);
+                        let source_key = unsafe { indirect_handle.raw_pointer() as u64 };
+                        if let Some(copied_noun) = copied.get(source_key) {
+                            unsafe { *dest = *copied_noun };
+                            continue;
+                        }
+                        let copied_mem = unsafe { self.alloc_indirect(indirect_handle.size()) };
+                        unsafe {
+                            copy_nonoverlapping(
+                                indirect_handle.raw_pointer(),
+                                copied_mem,
+                                indirect_handle.raw_size(),
+                            );
+                            *copied_mem &= CACHED_MUG_METADATA_MASK;
+                        }
+                        let copied_noun = unsafe {
+                            IndirectAtom::from_raw_pointer(copied_mem)
+                                .as_atom()
+                                .as_noun()
+                        };
+                        copied.insert(source_key, copied_noun);
+                        unsafe { *dest = copied_noun };
+                    }
+                    Either::Right(cell) => {
+                        let cell_handle = cell.in_space(space);
+                        let source_key = unsafe { cell_handle.raw_pointer() as u64 };
+                        if let Some(copied_noun) = copied.get(source_key) {
+                            unsafe { *dest = *copied_noun };
+                            continue;
+                        }
+                        let copied_mem = unsafe { self.alloc_cell() };
+                        unsafe {
+                            copy_nonoverlapping(cell_handle.raw_pointer(), copied_mem, 1);
+                            (*copied_mem).metadata &= CACHED_MUG_METADATA_MASK;
+                        }
+                        let copied_noun = unsafe { Cell::from_raw_pointer(copied_mem).as_noun() };
+                        copied.insert(source_key, copied_noun);
+                        unsafe { *dest = copied_noun };
+                        unsafe {
+                            stack.push((cell_handle.tail().noun(), &mut (*copied_mem).tail));
+                            stack.push((cell_handle.head().noun(), &mut (*copied_mem).head));
+                        }
+                    }
+                },
+            }
+        }
+        res
+    }
+}
+
+/// Write-side operations for the generative [`BrandedNounSpace`].
+///
+/// `BrandedNounSpace` and its handles (defined in `nockvm`) are read-only by
+/// design: they let code traverse a noun while a generative `'id` brand proves
+/// the noun belongs to one specific arena and that no handle escapes the
+/// `with_brand` scope. The native Hoon compiler's eval boundary needs two
+/// operations the read-only layer can't express — copy a foreign noun *into*
+/// the branded arena, and evaluate a branded formula — so they live here in
+/// nockapp, where the copy primitive ([`NounAllocatorExt::copy_into`]) and the
+/// interpreter both do, rather than as a sui-generis Noun wrapper inside honk.
+///
+/// The payoff is provenance by construction: a `BrandedNounHandle` for the
+/// eval arena can only be obtained by copying a foreign noun in
+/// ([`Self::copy_in`]) or by branding a noun already resident in the arena
+/// ([`BrandedNounSpace::handle`]). Because the branded
+/// [`interpret`](BrandedEvalExt::interpret) requires its subject and formula to
+/// carry the *same* brand as the arena it runs in, a raw slab noun can no
+/// longer reach `interpret` by accident — the "alien noun" hazard becomes a
+/// brand/borrow error at compile time instead of a pointer-range panic at run
+/// time.
+///
+/// `self`'s space and `allocator` must describe the *same* arena. That pairing
+/// can't be proven by the type system (the `NounSpace` and the allocator are
+/// distinct values), so it is checked in debug builds: the copied noun is
+/// resolved against this space, which panics if it landed in a foreign arena.
+/// Release builds trust the pairing, matching the identity fast path in
+/// `NounSpace`'s pointer resolution.
+pub trait BrandedNounSpaceExt<'space, 'id> {
+    /// Copy `source` (resident in `source_space`) into this branded space via
+    /// `allocator`, returning a handle branded to this space.
+    fn copy_in<A: NounAllocator>(
+        self,
+        allocator: &mut A,
+        source: Noun,
+        source_space: &NounSpace,
+    ) -> BrandedNounHandle<'space, 'id>;
+
+    /// Copy a noun held by a (possibly differently-branded) handle into this
+    /// branded space. This is the only way to move a noun across brands, and it
+    /// always goes through a real copy.
+    fn copy_in_handle<A: NounAllocator>(
+        self,
+        allocator: &mut A,
+        source: BrandedNounHandle<'_, '_>,
+    ) -> BrandedNounHandle<'space, 'id>;
+}
+
+impl<'space, 'id> BrandedNounSpaceExt<'space, 'id> for BrandedNounSpace<'space, 'id> {
+    fn copy_in<A: NounAllocator>(
+        self,
+        allocator: &mut A,
+        source: Noun,
+        source_space: &NounSpace,
+    ) -> BrandedNounHandle<'space, 'id> {
+        let copied = allocator.copy_into(source, source_space);
+        let handle = self.handle(copied);
+        #[cfg(debug_assertions)]
+        {
+            // Resolving the copy against this space panics if `allocator` was
+            // not the allocator backing this branded space — i.e. the copy
+            // landed in a foreign arena. Catches a mismatched
+            // (allocator, brand) pairing at the boundary in debug builds.
+            let _ = handle.unbranded().allocated_location();
+        }
+        handle
+    }
+
+    fn copy_in_handle<A: NounAllocator>(
+        self,
+        allocator: &mut A,
+        source: BrandedNounHandle<'_, '_>,
+    ) -> BrandedNounHandle<'space, 'id> {
+        let unbranded = source.unbranded();
+        self.copy_in(allocator, unbranded.noun(), unbranded.space())
+    }
+}
+
+/// The branded eval entry: evaluate a branded `formula` against a branded
+/// `subject` — both branded to the arena `interpret` runs in — and return the
+/// product branded to that same arena. See [`BrandedNounSpaceExt`] for how the
+/// brands close the "alien noun" boundary.
+pub trait BrandedEvalExt<'space, 'id> {
+    fn interpret(
+        self,
+        context: &mut Context,
+        subject: BrandedNounHandle<'space, 'id>,
+        formula: BrandedNounHandle<'space, 'id>,
+    ) -> std::result::Result<BrandedNounHandle<'space, 'id>, NockError>;
+}
+
+impl<'space, 'id> BrandedEvalExt<'space, 'id> for BrandedNounSpace<'space, 'id> {
+    fn interpret(
+        self,
+        context: &mut Context,
+        subject: BrandedNounHandle<'space, 'id>,
+        formula: BrandedNounHandle<'space, 'id>,
+    ) -> std::result::Result<BrandedNounHandle<'space, 'id>, NockError> {
+        let product = interpret(
+            context,
+            subject.unbranded().noun(),
+            formula.unbranded().noun(),
+        )?;
+        let handle = self.handle(product);
+        #[cfg(debug_assertions)]
+        {
+            // The product is allocated in `context.stack`; resolving it against
+            // this space panics if this brand does not describe that stack.
+            let _ = handle.unbranded().allocated_location();
+        }
+        Ok(handle)
+    }
+}
+
+pub trait NounJamExt {
+    fn jam_bytes(self, space: &NounSpace) -> Bytes;
+}
+
+impl NounJamExt for Noun {
+    fn jam_bytes(self, space: &NounSpace) -> Bytes {
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        slab.copy_into(self, space);
+        slab.jam()
+    }
+}
+
+pub trait NounEncodeJamExt: NounEncode {
+    fn jam_bytes(&self) -> Bytes {
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let noun = self.to_noun(&mut slab);
+        slab.set_root(noun);
+        slab.jam()
+    }
+}
+
+impl<T: NounEncode> NounEncodeJamExt for T {}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use nockvm::mem::{NockStack, NOCK_STACK_SIZE_TINY};
+    use nockvm::mug::{calc_atom_mug_u32, calc_cell_mug_u32, get_mug, set_mug};
+    use nockvm::noun::{Atom, NounAllocator, D, T};
+
+    use super::{AtomExt, BrandedEvalExt, BrandedNounSpaceExt, IntoSlab, NounAllocatorExt};
+    use crate::noun::slab::{NockJammer, NounSlab};
+
+    #[test]
+    fn str_into_slab_allocates_in_destination_slab() {
+        let slab = "hello".into_slab();
+        let root = unsafe { *slab.root() };
+        let space = slab.noun_space();
+        let atom = root
+            .in_space(&space)
+            .as_atom()
+            .expect("root should be an atom");
+        let text = atom
+            .into_string()
+            .expect("root atom should decode to utf-8");
+        assert_eq!(text, "hello");
+    }
+
+    #[test]
+    fn copy_into_preserves_shared_cells() {
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let shared = T(&mut slab, &[D(1), D(2)]);
+        let root = T(&mut slab, &[shared, shared]);
+        let source_space = slab.noun_space();
+
+        let mut stack = NockStack::new(NOCK_STACK_SIZE_TINY, 0);
+        let copied = stack.copy_into(root, &source_space);
+        let copied_space = stack.noun_space();
+        let copied_cell = copied
+            .in_space(&copied_space)
+            .as_cell()
+            .expect("copied root should be a cell");
+        let left = copied_cell.head().noun();
+        let right = copied_cell.tail().noun();
+
+        assert!(
+            unsafe { left.raw_equals(&right) },
+            "copy_into should preserve repeated references instead of duplicating subtrees"
+        );
+        assert!(
+            !unsafe { left.raw_equals(&shared) },
+            "copy_into should allocate shared subtrees in the destination"
+        );
+    }
+
+    #[test]
+    fn allocator_copy_into_preserves_source_cached_mugs() {
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let cell = T(&mut slab, &[D(5), D(23)]);
+        let atom = Atom::from_bytes(&mut slab, &Bytes::from_static(b"large-indirect-atom"));
+        let atom_noun = atom.as_noun();
+        let source_space = slab.noun_space();
+        let atom_mug = calc_atom_mug_u32(atom, &source_space);
+        let cell_mug = {
+            let cell_handle = cell
+                .in_space(&source_space)
+                .as_cell()
+                .expect("source cell should be allocated");
+            let head_mug = get_mug(cell_handle.head().noun(), &source_space).expect("head mug");
+            let tail_mug = get_mug(cell_handle.tail().noun(), &source_space).expect("tail mug");
+            unsafe { calc_cell_mug_u32(head_mug, tail_mug, &source_space) }
+        };
+
+        unsafe {
+            let mut cell_allocated = cell.as_allocated().expect("cell should be allocated");
+            set_mug(&mut cell_allocated, cell_mug, &source_space);
+            let mut atom_allocated = atom_noun
+                .as_allocated()
+                .expect("indirect atom should be allocated");
+            set_mug(&mut atom_allocated, atom_mug, &source_space);
+        }
+
+        let root = T(&mut slab, &[cell, atom_noun]);
+        let source_space = slab.noun_space();
+        let mut stack = NockStack::new(NOCK_STACK_SIZE_TINY, 0);
+        let copied = stack.copy_into(root, &source_space);
+        let copied_space = stack.noun_space();
+        let copied_cell = copied
+            .in_space(&copied_space)
+            .as_cell()
+            .expect("copied root should be a cell");
+
+        assert_eq!(
+            get_mug(copied_cell.head().noun(), &copied_space),
+            Some(cell_mug)
+        );
+        assert_eq!(
+            get_mug(copied_cell.tail().noun(), &copied_space),
+            Some(atom_mug)
+        );
+    }
+
+    #[test]
+    fn branded_copy_in_round_trips_across_spaces() {
+        // Source noun `[5 23]` lives in a slab.
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let source = T(&mut slab, &[D(5), D(23)]);
+        let source_space = slab.noun_space();
+
+        // Destination is a separate stack arena, branded for the read-back.
+        let mut stack = NockStack::new(NOCK_STACK_SIZE_TINY, 0);
+        let dest_space = stack.noun_space();
+
+        let (head, tail) = dest_space.with_brand(|brand| {
+            let copied = brand.copy_in(&mut stack, source, &source_space);
+            let cell = copied.as_cell().expect("copied root should be a cell");
+            let head = cell
+                .head()
+                .as_atom()
+                .expect("head atom")
+                .as_u64()
+                .expect("head u64");
+            let tail = cell
+                .tail()
+                .as_atom()
+                .expect("tail atom")
+                .as_u64()
+                .expect("tail u64");
+            (head, tail)
+        });
+
+        assert_eq!((head, tail), (5, 23));
+    }
+
+    #[test]
+    fn branded_interpret_evaluates_copied_in_formula() {
+        use nockvm::jets::cold::Cold;
+        use nockvm::jets::JetDispatchMode;
+
+        use crate::utils::create_context;
+
+        // Nock formula `[1 42]` (op 1 = produce constant) lives in a slab —
+        // the "alien" arena, foreign to the interpreter's stack.
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let formula = T(&mut slab, &[D(1), D(42)]);
+        let formula_space = slab.noun_space();
+
+        let mut stack = NockStack::new(NOCK_STACK_SIZE_TINY, 0);
+        let cold = Cold::new(&mut stack);
+        let mut context = create_context(stack, &[], cold, None, vec![], JetDispatchMode::Exact);
+
+        let stack_space = context.stack.noun_space();
+        let product = stack_space.with_brand(|brand| {
+            // Subject is a native direct atom; formula is copied in from the
+            // slab. Both now carry this stack's brand, so `interpret` accepts
+            // them; the raw slab `formula` would not type-check here.
+            let subject = brand.handle(D(0));
+            let formula = brand.copy_in(&mut context.stack, formula, &formula_space);
+            let out = brand
+                .interpret(&mut context, subject, formula)
+                .expect("interpret should succeed");
+            out.as_atom()
+                .expect("product atom")
+                .as_u64()
+                .expect("product u64")
+        });
+
+        assert_eq!(product, 42);
     }
 }

@@ -1,9 +1,9 @@
 use nockapp::kernel::boot;
 use nockapp::NockApp;
-use nockapp::noun::slab::NounSlab;
+use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockapp::wire::{SystemWire, Wire};
 use nockapp::{AtomExt};
-use nockvm::noun::{Atom, D, T};
+use nockvm::noun::{Atom, NounAllocator, D, T};
 use nockvm_macros::tas;
 use std::error::Error;
 use std::fs;
@@ -87,7 +87,7 @@ impl Validator for Entry {
 // prompt the line editor shows from the next line on.
 struct Answer { text: String, prompt: Option<String> }
 
-async fn process_input(nockapp: &mut NockApp, tag: u64, input: &str) -> Result<Answer, Box<dyn Error>> {
+async fn process_input(nockapp: &mut NockApp<NockJammer>, tag: u64, input: &str) -> Result<Answer, Box<dyn Error>> {
   // Handle empty input
   if input.trim().is_empty() {
     return Ok(Answer { text: String::new(), prompt: None });
@@ -103,8 +103,9 @@ async fn process_input(nockapp: &mut NockApp, tag: u64, input: &str) -> Result<A
     Ok(effects) => {
       let mut results = Vec::new();
       let mut prompt = None;
-      for (_i, effect) in effects.iter().enumerate() {
-        let effect_noun = unsafe { effect.root() };
+      for effect in effects.iter() {
+        let space = effect.noun_space();
+        let effect_noun = unsafe { effect.root() }.in_space(&space);
         // Only [tag cord] effects render:  [%prompt cord] sets the
         // prompt for the lines that follow (a kernel with modes, such
         // as Atalante's apple prompts, announces its mode this way);
@@ -113,13 +114,12 @@ async fn process_input(nockapp: &mut NockApp, tag: u64, input: &str) -> Result<A
         // goof from a blocked scry) rather than panicking, so a
         // peekContext miss/block is legible.
         if let Ok(cell) = effect_noun.as_cell() {
-          let Ok(head_atom) = cell.head().as_atom() else { continue };
-          let Ok(tail_atom) = cell.tail().as_atom() else { continue };
-          let Ok(tail_string) = std::str::from_utf8(tail_atom.as_ne_bytes()) else { continue };
-          let text = tail_string.trim_end_matches('\0').to_string();
-          let is_prompt = std::str::from_utf8(head_atom.as_ne_bytes())
-            .map(|t| t.trim_end_matches('\0') == "prompt")
-            .unwrap_or(false);
+          let Ok(head_atom) = cell.head().noun().in_space(&space).as_atom() else { continue };
+          let Ok(tail_atom) = cell.tail().noun().in_space(&space).as_atom() else { continue };
+          let Ok(tail_bytes) = tail_atom.to_bytes_until_nul() else { continue };
+          let Ok(head_bytes) = head_atom.to_bytes_until_nul() else { continue };
+          let text = String::from_utf8_lossy(&tail_bytes).to_string();
+          let is_prompt = head_bytes == b"prompt";
           if is_prompt { prompt = Some(text); } else { results.push(text); }
         }
       }
@@ -191,7 +191,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .unwrap_or("jojo")
     .to_string();
 
-  let mut nockapp = boot::setup(&kernel, Some(cli), &[], &instance, None).await?;
+  // The hot state:  nockvm's own jets, the hoon-138 float-door jets and
+  // the /lib/lagoon jets (crates/lagoon-jets), so a kernel's @rd
+  // arithmetic and its Lagoon %i754 arms run jetted.  HOON_FLOAT_JET_DISABLE=1
+  // leaves the float doors to the Nock; NOCK_TEST_JETS=path,... makes the
+  // runtime run jet and Nock side by side and bail on any mismatch.
+  let hot = lagoon_jets::hot_state();
+  let mut nockapp = boot::setup::<NockJammer>(&kernel, cli, &hot, &instance, None).await?;
 
   if let Some(src_path) = check_arg {
     let src = fs::read_to_string(&src_path)

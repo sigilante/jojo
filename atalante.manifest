@@ -1,12 +1,12 @@
 # atalante.jam: Atalante's REPL kernel (github.com/sigilante/atalante, app/kernel.jock), package manifest (jock tools/libs.py --manifest format)
-# built from atalante f7a05a8 (2026-11-03, P8: dfns with guards; P9: nested arrays), with jock 47838d9 (2026-10-27, sigilante/spec-recomposition), clean trees:
+# built from atalante c84de98 (2026-11-04, P11 in progress: numerics past #94, float jets via jojo's hot table), with jock 47838d9 (2026-10-27, sigilante/spec-recomposition), clean trees:
 #   tools/atlc.sh kernel --manifest atalante.manifest      (kern.sh over src/ and pkgs/)
-# kernel sha256: fe2442a2469095a33e1916f7357930cf84c684ddded4a3ebe6d1c4aaac81e56f
+# kernel sha256: e6f634da5afefca5cb5346a2240ef95e90e9e6dd8f7572dbaad4535bec015d41
 # the unsealed jam embeds these module sources and nothing else; the Jock compiler rides as compiled Nock
-array	fd448e6fed5d38c4500e4be86c3500b35ab3c49494aba2fe45112b4257b195d8	src/array.jock
-atl	f1455258f986da4af4a5535ef6ae9b29c4908675ed2d9a34702486eb5ae7f63f	src/atl.jock
-interp	454381bb0f0d4beaa22c474ce50df5d9299624a13de1651ccf37acc86a161691	src/interp.jock
-lexer	24a15513441fc8b771799f1e59f01b44dc253a3d6924fa0a167b1e7592dfb81f	src/lexer.jock
-parse	a36968288621dccd01b2e496538767455881cbed8b07fd5c1715e52d42f6d7ac	src/parse.jock
-lagoon	3557efac8f8a061fd02455d79c74c8abbe056046421933700422657f58f389a6	pkgs/lagoon.jam
-nasm	dcc478225fa84831cafd6f845a0ed54aea0888ee3bb1f91d912b3350528c70a4	pkgs/nasm.jam
+array	3d3ea9002701f70e7a28e718855b5b8af7aa419f6293e2af94628fa508e9835d	src/array.jock
+atl	f6b14ab19a08e2c4b44ebd8a29d703b7734901c8f6e40f6b8589954c34026049	src/atl.jock
+interp	d13a4e0cb59ddf79bcfb8d29a7eee4b74ff3f3e6abd6f767a4b0fd636160ba79	src/interp.jock
+lexer	9a98a9b51509d9827792b99407dddcd1bf01e2b659408e9953c88d40a951b206	src/lexer.jock
+parse	7e1913a495b3a9834f223f58d89b973435b4f9ef6d96c9e947c1b0f77c0ca02d	src/parse.jock
+lagoon	710300c241f532b9a5feb879a16cd8da96eb802f0a2f474872ff65629ad47dfb	pkgs/lagoon.jam
+nasm	bf79abb2400b9e3dcd2f95ba5a4016f3343bd610e395bdbe30b8418edbc1a0c9	pkgs/nasm.jam

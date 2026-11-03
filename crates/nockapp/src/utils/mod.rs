@@ -1,27 +1,35 @@
 pub mod bytes;
+pub(crate) mod durability;
 pub mod error;
 pub mod scry;
 pub mod slogger;
 
+use std::ptr::copy_nonoverlapping;
+use std::slice::from_raw_parts_mut;
+use std::sync::atomic::AtomicIsize;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use byteorder::{LittleEndian, ReadBytesExt};
 pub use bytes::ToBytes;
-use either::Either;
 pub use error::{CrownError, Result};
 use nockvm::hamt::Hamt;
 use nockvm::interpreter::{self, Context, NockCancelToken};
 use nockvm::jets::cold::Cold;
 use nockvm::jets::hot::{Hot, HotEntry};
 use nockvm::jets::warm::Warm;
+use nockvm::jets::JetDispatchMode;
 use nockvm::mem::NockStack;
-use nockvm::noun::{Atom, IndirectAtom, Noun, NounAllocator, D};
+pub use nockvm::mem::{
+    NOCK_STACK_1KB, NOCK_STACK_SIZE, NOCK_STACK_SIZE_HUGE, NOCK_STACK_SIZE_LARGE,
+    NOCK_STACK_SIZE_MEDIUM, NOCK_STACK_SIZE_SMALL, NOCK_STACK_SIZE_TINY,
+};
+use nockvm::noun::{Noun, NounSpace, D};
 use nockvm::serialization::jam;
 use nockvm::trace::TraceInfo;
 use slogger::CrownSlogger;
-use std::ptr::copy_nonoverlapping;
-use std::slice::from_raw_parts_mut;
-use std::sync::atomic::AtomicIsize;
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::noun::slab::NounSlab;
 
 // urbit @da timestamp
 pub struct DA(pub u128);
@@ -30,14 +38,6 @@ pub struct DA(pub u128);
 const EPOCH_DA: u128 = 170141184475152167957503069145530368000;
 // ~s1
 const S1: u128 = 18446744073709551616;
-
-pub const NOCK_STACK_1KB: usize = 1 << 7;
-
-// nock stack size
-pub const NOCK_STACK_SIZE: usize = (NOCK_STACK_1KB << 10 << 10) * 8; // 8GB
-
-// HUGE nock stack size
-pub const NOCK_STACK_SIZE_HUGE: usize = (NOCK_STACK_1KB << 10 << 10) * 128; // 32GB
 
 /**
  *   ::  +from-unix: unix seconds to @da
@@ -80,19 +80,14 @@ pub fn current_epoch_ms() -> u128 {
         .as_millis()
 }
 
-pub fn make_tas<A: NounAllocator>(allocator: &mut A, tas: &str) -> Atom {
-    let tas_bytes: &[u8] = tas.as_bytes();
-    unsafe {
-        let mut tas_atom =
-            IndirectAtom::new_raw_bytes(allocator, tas_bytes.len(), tas_bytes.as_ptr());
-        tas_atom.normalize_as_atom()
-    }
-}
+pub use nockvm::ext::make_tas;
 
 // serialize a noun for writing over a socket or a file descriptor
 pub fn serialize_noun(stack: &mut NockStack, noun: Noun) -> Result<Vec<u8>> {
     let atom = jam(stack, noun);
-    let size = atom.size() << 3;
+    let space = stack.noun_space();
+    let atom_handle = atom.in_space(&space);
+    let size = atom_handle.size() << 3;
 
     let buf = unsafe { from_raw_parts_mut(stack.struct_alloc::<u8>(size + 5), size + 5) };
     buf[0] = 0u8;
@@ -101,27 +96,32 @@ pub fn serialize_noun(stack: &mut NockStack, noun: Noun) -> Result<Vec<u8>> {
     buf[3] = (size >> 16) as u8;
     buf[4] = (size >> 24) as u8;
 
-    match atom.as_either() {
-        Either::Left(direct) => unsafe {
+    if atom_handle.is_direct() {
+        let direct = atom_handle
+            .atom()
+            .as_direct()
+            .expect("direct atom expected");
+        unsafe {
             copy_nonoverlapping(
                 &direct.data() as *const u64 as *const u8,
                 buf.as_mut_ptr().add(5),
                 size,
             );
-        },
-        Either::Right(indirect) => unsafe {
+        }
+    } else {
+        unsafe {
             copy_nonoverlapping(
-                indirect.data_pointer() as *const u8,
+                atom_handle.data_pointer() as *const u8,
                 buf.as_mut_ptr().add(5),
                 size,
             );
-        },
-    };
+        }
+    }
     Ok(buf.to_vec())
 }
 
-pub fn compute_timer_time(time: Noun) -> Result<u64> {
-    let time_atom = time.as_atom()?;
+pub fn compute_timer_time(time: Noun, space: &NounSpace) -> Result<u64> {
+    let time_atom = time.in_space(space).as_atom()?;
     let mut time_bytes: &[u8] = time_atom.as_ne_bytes();
     let timer_time: u128 = da_to_unix_ms(DA(ReadBytesExt::read_u128::<LittleEndian>(
         &mut time_bytes,
@@ -148,15 +148,29 @@ pub fn create_context(
     hot_state: &[HotEntry],
     mut cold: Cold,
     trace_info: Option<TraceInfo>,
+    test_jets: Vec<NounSlab>,
+    jet_dispatch: JetDispatchMode,
 ) -> Context {
+    let arena = stack.arena().clone();
     let cache = Hamt::<Noun>::new(&mut stack);
+    let test_jets = {
+        let mut hamt = Hamt::<()>::new(&mut stack);
+        for jet in test_jets {
+            let mut path_noun = jet.copy_to_stack(&mut stack);
+            hamt = hamt.insert(&mut stack, &mut path_noun, ());
+        }
+
+        hamt
+    };
     let hot = Hot::init(&mut stack, hot_state);
-    let warm = Warm::init(&mut stack, &mut cold, &hot);
+    let warm = Warm::init(&mut stack, &mut cold, &hot, &test_jets, jet_dispatch);
     let slogger = Box::pin(CrownSlogger {});
     let cancel = Arc::new(AtomicIsize::new(NockCancelToken::RUNNING_IDLE));
 
     interpreter::Context {
         stack,
+        op_budget: None,
+        jet_dispatch,
         slogger,
         cold,
         warm,
@@ -164,6 +178,8 @@ pub fn create_context(
         cache,
         scry_stack: D(0),
         trace_info,
+        test_jets,
         running_status: cancel,
+        arena,
     }
 }

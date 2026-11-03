@@ -127,6 +127,7 @@ macro_rules! forward_binop_assign_arg_by_value {
     };
 }
 
+#[rustfmt::skip]
 pub(crate) use {
     forward_binop_assign_arg_by_value, forward_binop_first_arg_by_value,
     forward_binop_second_arg_by_value, forward_binop_swap_args,

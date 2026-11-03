@@ -1,10 +1,11 @@
 //! Modular addition and subtraction.
 
+use core::cmp::Ordering;
+use core::ops::{Add, AddAssign, Neg, Sub, SubAssign};
+
 use crate::modular::modulo::{Modulo, ModuloLarge, ModuloRepr, ModuloSmall, ModuloSmallRaw};
 use crate::modular::modulo_ring::ModuloRingSmall;
 use crate::{add, cmp};
-use core::cmp::Ordering;
-use core::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 
 impl<'a> Neg for Modulo<'a> {
     type Output = Modulo<'a>;

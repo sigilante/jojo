@@ -1,3 +1,6 @@
+use alloc::alloc::Layout;
+use core::ops::{Mul, MulAssign};
+
 use crate::arch::word::Word;
 use crate::assert::debug_assert_in_const_fn;
 use crate::memory::{self, Memory, MemoryAllocation};
@@ -6,8 +9,6 @@ use crate::modular::modulo_ring::{ModuloRingLarge, ModuloRingSmall};
 use crate::primitive::extend_word;
 use crate::sign::Sign::Positive;
 use crate::{div, mul, shift};
-use alloc::alloc::Layout;
-use core::ops::{Mul, MulAssign};
 
 impl<'a> Mul<Modulo<'a>> for Modulo<'a> {
     type Output = Modulo<'a>;

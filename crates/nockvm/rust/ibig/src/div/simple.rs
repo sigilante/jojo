@@ -1,10 +1,11 @@
 //! Simple division algorithm.
 
+use core::cmp::Ordering;
+
 use crate::arch::word::Word;
 use crate::fast_divide::FastDivideNormalized;
 use crate::primitive::{double_word, extend_word};
 use crate::{add, cmp, mul};
-use core::cmp::Ordering;
 
 /// Division in place using the simple algorithm.
 ///

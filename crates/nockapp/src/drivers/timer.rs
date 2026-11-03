@@ -1,8 +1,10 @@
+use std::time::Duration;
+
+use tokio::time;
+
 use crate::nockapp::driver::*;
 use crate::nockapp::wire::Wire;
 use crate::noun::slab::NounSlab;
-use std::time::Duration;
-use tokio::time;
 
 pub enum TimerWire {
     Tick,

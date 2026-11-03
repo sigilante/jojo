@@ -1,5 +1,7 @@
 //! Format in a power-of-two radix.
 
+use core::fmt::{self, Formatter};
+
 use crate::arch::word::Word;
 use crate::fmt::digit_writer::DigitWriter;
 use crate::fmt::{InRadixFull, PreparedForFormatting};
@@ -7,7 +9,6 @@ use crate::math;
 use crate::primitive::{WORD_BITS, WORD_BITS_USIZE};
 use crate::radix::{self, Digit};
 use crate::ubig::Repr::*;
-use core::fmt::{self, Formatter};
 
 impl InRadixFull<'_> {
     /// Radix must be a power of 2.

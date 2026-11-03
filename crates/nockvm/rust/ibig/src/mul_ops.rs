@@ -1,5 +1,10 @@
 //! Multiplication operators.
 
+use core::mem;
+use core::ops::{Mul, MulAssign};
+
+use static_assertions::const_assert;
+
 use crate::arch::word::Word;
 use crate::buffer::Buffer;
 use crate::ibig::IBig;
@@ -9,13 +14,11 @@ use crate::sign::Sign::{self, *};
 use crate::ubig::Repr::*;
 use crate::ubig::UBig;
 use crate::{helper_macros, mul};
-use core::mem;
-use core::ops::{Mul, MulAssign};
-use static_assertions::const_assert;
 
 impl Mul<UBig> for UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use mul_stack instead to prevent memory leaks.
     #[inline]
     fn mul(self, rhs: UBig) -> UBig {
         match (self.into_repr(), rhs.into_repr()) {
@@ -30,6 +33,7 @@ impl Mul<UBig> for UBig {
 impl Mul<&UBig> for UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use mul_stack instead to prevent memory leaks.
     #[inline]
     fn mul(self, rhs: &UBig) -> UBig {
         match (self.into_repr(), rhs.repr()) {
@@ -44,6 +48,7 @@ impl Mul<&UBig> for UBig {
 impl Mul<UBig> for &UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use mul_stack instead to prevent memory leaks.
     #[inline]
     fn mul(self, rhs: UBig) -> UBig {
         rhs.mul(self)
@@ -53,6 +58,7 @@ impl Mul<UBig> for &UBig {
 impl Mul<&UBig> for &UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use mul_stack instead to prevent memory leaks.
     #[inline]
     fn mul(self, rhs: &UBig) -> UBig {
         match (self.repr(), rhs.repr()) {

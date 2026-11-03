@@ -1,13 +1,15 @@
 //! Formatting helpers.
 
+use core::fmt::{
+    self, Alignment, Binary, Debug, Display, Formatter, LowerHex, Octal, UpperHex, Write,
+};
+
+use digit_writer::DigitWriter;
+
 use crate::ibig::IBig;
 use crate::radix::{self, Digit, DigitCase};
 use crate::sign::Sign::{self, *};
 use crate::ubig::UBig;
-use core::fmt::{
-    self, Alignment, Binary, Debug, Display, Formatter, LowerHex, Octal, UpperHex, Write,
-};
-use digit_writer::DigitWriter;
 
 mod digit_writer;
 mod non_power_two;

@@ -1,4 +1,7 @@
+use noun_serde::NounDecodeError;
 use thiserror::Error;
+
+use crate::noun::slab::NounSlab;
 
 #[derive(Debug, Error)]
 pub enum ExternalError {
@@ -26,7 +29,7 @@ pub enum CrownError<T = ExternalError> {
     #[error("{0}")]
     InterpreterError(#[from] SwordError),
     #[error("kernel error")]
-    KernelError(Option<nockvm::noun::Noun>),
+    KernelError(Option<NounSlab>),
     #[error("{0}")]
     Utf8FromError(#[from] std::string::FromUtf8Error),
     #[error("{0}")]
@@ -39,6 +42,14 @@ pub enum CrownError<T = ExternalError> {
     BootError,
     #[error("Serf load error")]
     SerfLoadError,
+    #[error("{0}")]
+    SerfInitAllocationError(String),
+    #[error("{0}")]
+    SerfInitPanic(String),
+    #[error(
+        "checkpoint ker_hash != current ker_hash: checkpoint={checkpoint} current={current}. Rebuild with matching kernel assets or resync checkpoints."
+    )]
+    CheckpointKernelHashMismatch { checkpoint: String, current: String },
     #[error("work bail")]
     WorkBail,
     #[error("peek bail")]
@@ -63,6 +74,8 @@ pub enum CrownError<T = ExternalError> {
     EncodeError(#[from] bincode::error::EncodeError),
     #[error("state jam format error: the state jam file format is not recognized")]
     StateJamFormatError,
+    #[error("timeout")]
+    Timeout,
     #[error("unknown error: {0}")]
     Unknown(String),
     #[error("conversion error: {0}")]
@@ -72,9 +85,23 @@ pub enum CrownError<T = ExternalError> {
     #[error("queue")]
     QueueError(#[from] QueueErrorWrapper),
     #[error("Serf MPSC error")]
-    SerfMPSCError(#[from] tokio::sync::mpsc::error::SendError<crate::kernel::form::SerfAction>),
+    SerfMPSCError(),
     #[error("oneshot channel error")]
     OneshotChannelError(#[from] tokio::sync::oneshot::error::RecvError),
+}
+
+impl<C> From<tokio::sync::mpsc::error::SendError<crate::kernel::form::SerfAction<C>>>
+    for CrownError
+{
+    fn from(_: tokio::sync::mpsc::error::SendError<crate::kernel::form::SerfAction<C>>) -> Self {
+        CrownError::SerfMPSCError()
+    }
+}
+
+impl From<CrownError> for NounDecodeError {
+    fn from(e: CrownError) -> Self {
+        NounDecodeError::Custom(e.to_string())
+    }
 }
 
 #[derive(Debug)]
@@ -89,13 +116,13 @@ impl std::fmt::Display for SwordError {
     }
 }
 
-impl From<nockvm::interpreter::Error> for CrownError {
+impl<C> From<nockvm::interpreter::Error> for CrownError<C> {
     fn from(e: nockvm::interpreter::Error) -> Self {
         CrownError::InterpreterError(SwordError(e))
     }
 }
 
-impl From<nockvm::jets::JetErr> for CrownError {
+impl<C> From<nockvm::jets::JetErr> for CrownError<C> {
     fn from(e: nockvm::jets::JetErr) -> Self {
         CrownError::InterpreterError(SwordError(nockvm::interpreter::Error::from(e)))
     }
@@ -113,7 +140,7 @@ impl std::error::Error for QueueErrorWrapper {
     }
 }
 
-impl From<yaque::TrySendError<Vec<u8>>> for CrownError {
+impl<C> From<yaque::TrySendError<Vec<u8>>> for CrownError<C> {
     fn from(e: yaque::TrySendError<Vec<u8>>) -> Self {
         CrownError::QueueError(QueueErrorWrapper(e))
     }
@@ -134,14 +161,14 @@ impl std::fmt::Display for NounError {
     }
 }
 
-impl From<nockvm::noun::Error> for CrownError {
+impl<C> From<nockvm::noun::Error> for CrownError<C> {
     fn from(e: nockvm::noun::Error) -> Self {
         CrownError::Noun(NounError(e))
     }
 }
 
-impl<T, E: Into<CrownError>> IntoCrownError<T> for core::result::Result<T, E> {
-    fn nockapp(self) -> core::result::Result<T, CrownError> {
+impl<C, T, E: Into<CrownError<C>>> IntoCrownError<C, T> for core::result::Result<T, E> {
+    fn nockapp(self) -> core::result::Result<T, CrownError<C>> {
         match self {
             Ok(val) => Ok(val),
             Err(e) => Err(e.into()),
@@ -149,8 +176,8 @@ impl<T, E: Into<CrownError>> IntoCrownError<T> for core::result::Result<T, E> {
     }
 }
 
-pub trait IntoCrownError<T> {
-    fn nockapp(self) -> core::result::Result<T, CrownError>;
+pub trait IntoCrownError<C, T> {
+    fn nockapp(self) -> core::result::Result<T, CrownError<C>>;
 }
 
 pub type Result<V, E = CrownError<ExternalError>> = std::result::Result<V, E>;

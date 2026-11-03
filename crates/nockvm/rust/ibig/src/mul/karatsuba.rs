@@ -1,11 +1,12 @@
 //! Karatsuba multiplication algorithm.
 
+use alloc::alloc::Layout;
+
 use crate::arch::word::{SignedWord, Word};
 use crate::memory::{self, Memory};
 use crate::mul::{self, helpers};
 use crate::sign::Sign::{self, *};
 use crate::{add, math};
-use alloc::alloc::Layout;
 
 // We must have 3 * floor((n+1)/2) <= 2n.
 //
@@ -73,7 +74,7 @@ pub(crate) fn add_signed_mul_same_len(
     debug_assert!(b.len() == n && c.len() == 2 * n);
     debug_assert!(n >= MIN_LEN);
 
-    let mid = (n + 1) / 2;
+    let mid = n.div_ceil(2);
 
     let (a_lo, a_hi) = a.split_at(mid);
     let (b_lo, b_hi) = b.split_at(mid);

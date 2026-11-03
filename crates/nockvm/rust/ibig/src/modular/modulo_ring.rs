@@ -1,12 +1,13 @@
 //! A ring of integers modulo a positive integer.
 
+use alloc::vec::Vec;
+use core::cmp::Ordering;
+
 use crate::arch::word::Word;
 use crate::assert::debug_assert_in_const_fn;
 use crate::fast_divide::FastDivideNormalized;
 use crate::ubig::{Repr, UBig};
 use crate::{cmp, div, math};
-use alloc::vec::Vec;
-use core::cmp::Ordering;
 
 /// A ring of integers modulo a positive integer.
 ///

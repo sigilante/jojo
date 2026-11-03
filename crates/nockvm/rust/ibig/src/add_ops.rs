@@ -1,5 +1,8 @@
 //! Addition and subtraction operators.
 
+use core::mem;
+use core::ops::{Add, AddAssign, Sub, SubAssign};
+
 use crate::arch::word::Word;
 use crate::buffer::Buffer;
 use crate::ibig::IBig;
@@ -9,12 +12,11 @@ use crate::sign::Sign::*;
 use crate::ubig::Repr::*;
 use crate::ubig::UBig;
 use crate::{add, helper_macros};
-use core::mem;
-use core::ops::{Add, AddAssign, Sub, SubAssign};
 
 impl Add<UBig> for UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use add_stack instead to prevent memory leaks.
     #[inline]
     fn add(self, rhs: UBig) -> UBig {
         match (self.into_repr(), rhs.into_repr()) {
@@ -35,6 +37,7 @@ impl Add<UBig> for UBig {
 impl Add<&UBig> for UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use add_stack instead to prevent memory leaks.
     #[inline]
     fn add(self, rhs: &UBig) -> UBig {
         match (self.into_repr(), rhs.repr()) {
@@ -49,6 +52,7 @@ impl Add<&UBig> for UBig {
 impl Add<UBig> for &UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use add_stack instead to prevent memory leaks.
     #[inline]
     fn add(self, rhs: UBig) -> UBig {
         rhs.add(self)
@@ -58,6 +62,7 @@ impl Add<UBig> for &UBig {
 impl Add<&UBig> for &UBig {
     type Output = UBig;
 
+    /// WARNING: This uses global allocator. Use add_stack instead to prevent memory leaks.
     #[inline]
     fn add(self, rhs: &UBig) -> UBig {
         match (self.repr(), rhs.repr()) {

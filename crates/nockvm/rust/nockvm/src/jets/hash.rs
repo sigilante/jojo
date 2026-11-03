@@ -9,17 +9,19 @@ use crate::noun::Noun;
 crate::gdb!();
 
 pub fn jet_mug(context: &mut Context, subject: Noun) -> Result {
-    let arg = slot(subject, 6)?;
+    let space = context.stack.noun_space();
+    let arg = slot(subject, 6, &space)?;
     Ok(mug(&mut context.stack, arg).as_noun())
 }
 
 #[cfg(test)]
 mod tests {
+    use ibig::ubig;
+
     use super::*;
     use crate::jets::util::test::{assert_jet, init_context, A};
     use crate::mem::NockStack;
     use crate::noun::{Noun, D, T};
-    use ibig::ubig;
 
     fn atoms(s: &mut NockStack) -> (Noun, Noun, Noun, Noun, Noun) {
         (atom_0(s), atom_24(s), atom_63(s), atom_96(s), atom_128(s))

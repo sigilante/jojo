@@ -205,9 +205,10 @@ impl FastDivideNormalized {
 
 #[cfg(test)]
 mod tests {
+    use rand::prelude::*;
+
     use super::*;
     use crate::primitive::WORD_BITS;
-    use rand::prelude::*;
 
     #[test]
     #[cfg_attr(miri, ignore)]

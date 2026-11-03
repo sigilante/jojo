@@ -1,3 +1,5 @@
+#![allow(clippy::missing_safety_doc)]
+
 pub mod cold;
 pub mod hot;
 pub mod warm;
@@ -12,8 +14,13 @@ pub mod math;
 pub mod nock;
 pub mod parse;
 pub mod serial;
+pub mod set;
 pub mod sort;
 pub mod tree;
+
+use cold::FromNounError;
+use nockvm_macros::tas;
+use util::BAIL_EXIT;
 
 use crate::flog;
 use crate::interpreter::{Context, Error, Mote};
@@ -31,21 +38,37 @@ use crate::jets::math::*;
 use crate::jets::nock::*;
 use crate::jets::parse::*;
 use crate::jets::serial::*;
+//use crate::jets::set::*;
 use crate::jets::sort::*;
-
 use crate::jets::tree::*;
 use crate::jets::warm::Warm;
 use crate::mem::{NockStack, Preserve};
-use crate::noun::{self, Noun, Slots};
-use cold::FromNounError;
-use nockvm_macros::tas;
-use util::BAIL_EXIT;
+use crate::noun::{self, Noun};
 
 crate::gdb!();
 
 /// Return Err if the computation crashed or should punt to Nock
 pub type Result = std::result::Result<Noun, JetErr>;
 pub type Jet = fn(&mut Context, Noun) -> Result;
+
+/// How jet matching compares formulas and batteries.
+///
+/// `Exact` matches nouns as-is and treats `%sham` hints as transparent.
+/// `HintBlind` additionally matches modulo transparent hints
+/// (%hand/%hunk/%lose/%mean/%spot) and enables `%sham` name dispatch for
+/// honk's native-prelude bring-up. Honk requires this because its
+/// natively-minted cores and cued cold-state assets differ from registered
+/// batteries only by such hints, while runtimes whose registrations and
+/// cores come from the same compile (hoonc, nockchain) never need it.
+/// Hint-blind matching costs a formula normalization walk on warm misses and
+/// a structural battery comparison when unification fails, so it is opt-in
+/// per `Context`.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub enum JetDispatchMode {
+    #[default]
+    Exact,
+    HintBlind,
+}
 
 /**
  * Only return a deterministic error if the Nock would have deterministically
@@ -56,6 +79,15 @@ pub enum JetErr {
     Punt,        // Retry with the raw nock
     Fail(Error), // Error; do not retry
 }
+impl std::fmt::Display for JetErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            JetErr::Punt => write!(f, "Punt"),
+            JetErr::Fail(err) => write!(f, "Fail({})", err),
+        }
+    }
+}
+impl std::error::Error for JetErr {}
 
 impl Preserve for JetErr {
     unsafe fn preserve(&mut self, stack: &mut NockStack) {
@@ -192,11 +224,13 @@ pub fn get_jet_test_mode(_jet_name: Noun) -> bool {
 }
 
 pub mod util {
+    use std::result;
+
+    use bitvec::prelude::{BitSlice, Lsb0};
+
     use super::*;
     use crate::interpreter::interpret;
-    use crate::noun::{Noun, D, T};
-    use bitvec::prelude::{BitSlice, Lsb0};
-    use std::result;
+    use crate::noun::{Noun, NounSpace, D, T};
 
     pub const BAIL_EXIT: JetErr = JetErr::Fail(Error::Deterministic(Mote::Exit, D(0)));
     pub const BAIL_FAIL: JetErr = JetErr::Fail(Error::NonDeterministic(Mote::Fail, D(0)));
@@ -241,8 +275,9 @@ pub mod util {
         bits_to_word(checked_left_shift(bloq, step)?)
     }
 
-    pub fn slot(noun: Noun, axis: u64) -> Result {
-        noun.slot(axis).map_err(|_e| BAIL_EXIT)
+    pub fn slot(noun: Noun, axis: u64, space: &NounSpace) -> Result {
+        noun.slot_direct_trusted_or_checked(axis, space)
+            .map_err(|_e| BAIL_EXIT)
     }
 
     /// Extract a bloq and check that it's computable by the current system
@@ -256,10 +291,10 @@ pub mod util {
     }
 
     /// Extract the bloq and step from a bite
-    pub fn bite(a: Noun) -> result::Result<(usize, usize), JetErr> {
-        if let Ok(cell) = a.as_cell() {
-            let bloq = bloq(cell.head())?;
-            let step = cell.tail().as_direct()?.data() as usize;
+    pub fn bite(a: Noun, space: &NounSpace) -> result::Result<(usize, usize), JetErr> {
+        if let Ok(cell) = a.in_space(space).as_cell() {
+            let bloq = bloq(cell.head().noun())?;
+            let step = cell.tail().noun().as_direct()?.data() as usize;
             Ok((bloq, step))
         } else {
             bloq(a).map(|x| (x, 1_usize))
@@ -302,10 +337,21 @@ pub mod util {
     }
 
     pub fn slam(context: &mut Context, gate: Noun, sample: Noun) -> result::Result<Noun, JetErr> {
-        let core: Noun = T(
-            &mut context.stack,
-            &[gate.as_cell()?.head(), sample, gate.as_cell()?.tail().as_cell()?.tail()],
-        );
+        let space = context.stack.fast_noun_space();
+        slam_with_space(context, gate, sample, &space)
+    }
+
+    pub fn slam_with_space(
+        context: &mut Context,
+        gate: Noun,
+        sample: Noun,
+        space: &NounSpace,
+    ) -> result::Result<Noun, JetErr> {
+        let gate_cell = gate.as_cell()?;
+        let (gate_head, gate_tail) = gate_cell.head_tail_trusted(space);
+        let gate_tail_cell = gate_tail.as_cell()?;
+        let (_sample_slot, gate_context_tail) = gate_tail_cell.head_tail_trusted(space);
+        let core: Noun = T(&mut context.stack, &[gate_head, sample, gate_context_tail]);
         kick(context, core, D(2))
     }
 
@@ -313,13 +359,14 @@ pub mod util {
         use std::sync::atomic::AtomicIsize;
         use std::sync::Arc;
 
+        use ibig::UBig;
+
         use super::*;
         use crate::hamt::Hamt;
         use crate::interpreter::{NockCancelToken, Slogger};
         use crate::mem::NockStack;
         use crate::noun::{Atom, Noun, D, T};
         use crate::unifying_equality::unifying_equality;
-        use ibig::UBig;
 
         struct TestSlogger {}
 
@@ -334,16 +381,20 @@ pub mod util {
         }
 
         pub fn init_context() -> Context {
-            let mut stack = NockStack::new(8 << 10 << 10, 0);
+            let mut stack = NockStack::new(crate::mem::NOCK_STACK_SIZE_TINY, 0);
+            let arena = stack.arena().clone();
             let cold = Cold::new(&mut stack);
             let warm = Warm::new(&mut stack);
             let hot = Hot::init(&mut stack, URBIT_HOT_STATE);
             let cache = Hamt::<Noun>::new(&mut stack);
             let slogger = std::boxed::Box::pin(TestSlogger {});
             let cancel = Arc::new(AtomicIsize::new(NockCancelToken::RUNNING_IDLE));
+            let test_jets = Hamt::<()>::new(&mut stack);
 
             Context {
                 stack,
+                op_budget: None,
+                jet_dispatch: crate::jets::JetDispatchMode::Exact,
                 slogger,
                 cold,
                 warm,
@@ -352,6 +403,8 @@ pub mod util {
                 scry_stack: D(0),
                 trace_info: None,
                 running_status: cancel,
+                test_jets,
+                arena,
             }
         }
 
@@ -362,7 +415,7 @@ pub mod util {
 
         pub fn assert_noun_eq(stack: &mut NockStack, mut a: Noun, mut b: Noun) {
             let eq = unsafe { unifying_equality(stack, &mut a, &mut b) };
-            assert!(eq, "got: {:?}, need: {:?}", a, b);
+            assert!(eq, "got: {a:?}, need: {b:?}");
         }
 
         pub fn assert_jet(context: &mut Context, jet: Jet, sam: Noun, res: Noun) {
@@ -426,17 +479,13 @@ pub mod util {
                         },
                         _ => {
                             panic!(
-                                "with sample: {:?}, expected err: {:?}, got: {:?}",
-                                sam, expected_err, actual_err
+                                "with sample: {sam:?}, expected err: {expected_err:?}, got: {actual_err:?}"
                             );
                         }
                     }
                 }
                 _ => {
-                    panic!(
-                        "with sample: {:?}, expected err: {:?}, got: {:?}",
-                        sam, err, jet_err
-                    );
+                    panic!("with sample: {sam:?}, expected err: {err:?}, got: {jet_err:?}");
                 }
             }
         }
@@ -452,6 +501,7 @@ pub mod util {
                 )
             });
             assert!(res.is_atom(), "jet result not atom");
+            let space = context.stack.fast_noun_space();
             let res_siz = res
                 .atom()
                 .unwrap_or_else(|| {
@@ -462,8 +512,9 @@ pub mod util {
                         option_env!("GIT_SHA")
                     )
                 })
+                .in_space(&space)
                 .size();
-            assert!(siz == res_siz, "got: {}, need: {}", res_siz, siz);
+            assert!(siz == res_siz, "got: {res_siz}, need: {siz}");
         }
 
         pub fn assert_common_jet(

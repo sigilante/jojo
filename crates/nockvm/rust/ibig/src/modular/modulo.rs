@@ -1,9 +1,10 @@
 //! Element of modular arithmetic.
 
+use alloc::vec::Vec;
+
 use crate::arch::word::Word;
 use crate::math;
 use crate::modular::modulo_ring::{ModuloRingLarge, ModuloRingSmall};
-use alloc::vec::Vec;
 
 /// Modular arithmetic.
 ///

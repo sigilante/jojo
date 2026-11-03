@@ -1,12 +1,14 @@
 //! Divide and conquer division algorithm.
 
+use alloc::alloc::Layout;
+
+use static_assertions::const_assert;
+
 use crate::arch::word::{SignedWord, Word};
 use crate::fast_divide::FastDivideNormalized;
 use crate::memory::Memory;
 use crate::sign::Sign::*;
 use crate::{add, div, mul};
-use alloc::alloc::Layout;
-use static_assertions::const_assert;
 
 /// Memory requirement for division.
 pub(crate) fn memory_requirement_exact(lhs_len: usize, rhs_len: usize) -> Layout {

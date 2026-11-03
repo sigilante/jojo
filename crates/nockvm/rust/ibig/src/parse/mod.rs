@@ -1,11 +1,12 @@
 //! Parsing numbers.
 
+use core::str::FromStr;
+
 use crate::error::ParseError;
 use crate::ibig::IBig;
 use crate::radix::{self, Digit};
 use crate::sign::Sign::*;
 use crate::ubig::UBig;
-use core::str::FromStr;
 
 mod non_power_two;
 mod power_two;

@@ -1,12 +1,13 @@
 //! Primitive integral types.
 
-use crate::arch::word::{DoubleWord, Word};
-use crate::error::OutOfBoundsError;
-use crate::sign::Sign::{self, *};
 use core::convert::{TryFrom, TryInto};
 use core::fmt::Debug;
 use core::mem;
 use core::ops::{Add, Div, Mul, Shl, Shr, Sub};
+
+use crate::arch::word::{DoubleWord, Word};
+use crate::error::OutOfBoundsError;
+use crate::sign::Sign::{self, *};
 
 /// Cast `Word` to `DoubleWord`.
 #[inline]
@@ -25,7 +26,7 @@ pub(crate) const fn split_double_word(dw: DoubleWord) -> (Word, Word) {
     (dw as Word, (dw >> WORD_BITS) as Word)
 }
 
-pub(crate) trait PrimitiveUnsigned
+pub trait PrimitiveUnsigned
 where
     Self: Copy,
     Self: Debug,

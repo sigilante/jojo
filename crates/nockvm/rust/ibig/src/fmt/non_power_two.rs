@@ -1,5 +1,11 @@
 //! Format in a non-power-of-two radix.
 
+use alloc::vec::Vec;
+use core::fmt::{self, Formatter};
+use core::mem;
+
+use static_assertions::const_assert;
+
 use crate::arch::word::Word;
 use crate::div;
 use crate::fmt::digit_writer::DigitWriter;
@@ -8,10 +14,6 @@ use crate::ops::DivRem;
 use crate::radix::{self, Digit};
 use crate::ubig::Repr::*;
 use crate::ubig::UBig;
-use alloc::vec::Vec;
-use core::fmt::{self, Formatter};
-use core::mem;
-use static_assertions::const_assert;
 
 /// Format in chunks of CHUNK_LEN * digits_per_word.
 const CHUNK_LEN: usize = 16;
@@ -162,6 +164,7 @@ impl PreparedLarge {
 
         let mut radix_powers = Vec::new();
         let mut big_chunks = Vec::new();
+        // FIXME: This use of ibig's pow will leak memory.
         let chunk_power = UBig::from_word(radix_info.range_per_word).pow(CHUNK_LEN);
         if chunk_power > *number {
             return PreparedLarge {
@@ -188,7 +191,7 @@ impl PreparedLarge {
             }
             // 2 * prev.len() is at most 1 larger than number.len().
             // It won't overflow because UBig::MAX_LEN is even.
-            const_assert!(UBig::MAX_LEN % 2 == 0);
+            const_assert!(UBig::MAX_LEN.is_multiple_of(2));
             let new = prev * prev;
             if new > *number {
                 break;

@@ -2,6 +2,10 @@
 //!
 //! Note: these don't work on 16-bit machines.
 
+#![allow(deprecated)]
+
+use std::fmt::Write;
+
 use criterion::{
     black_box, criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion,
     PlotConfiguration,
@@ -10,7 +14,6 @@ use ibig::modular::ModuloRing;
 use ibig::ops::DivRem;
 use ibig::{ubig, UBig};
 use rand::prelude::*;
-use std::fmt::Write;
 
 fn random_ubig<R>(bits: usize, rng: &mut R) -> UBig
 where

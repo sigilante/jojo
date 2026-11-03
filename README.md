@@ -50,6 +50,8 @@ $ cargo run --release -- --prompt '🍎> ' atalante.jam
 🍎> X ← 'sing' 'goddess' 'sing' 'of' 'the' 'rage'
 🍎> X[⍋X]
 'goddess' 'of' 'rage' 'sing' 'sing' 'the'
+🍎> 8 ¯11 ¯3⌹3 3⍴2 1 ¯1 ¯3 ¯1 2 ¯2 1 2
+2 3 ¯1
 ```
 
 A dfn that spans lines is typed as jojo's own continuation: an open

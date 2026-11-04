@@ -60,6 +60,8 @@ lines as one entry (Atalante's D-69).
 unsealed jam embeds: Atalante's own five, and its two Hoon packages. The
 Jock compiler rides as compiled Nock, as in the other jams here.
 
+Under `)ASCII ON` every glyph has a word (`2 3 rho iota 6`), and `⎕TYPE←'UINT8 REAL32'` sets the width each kind is made at.
+
 ### One-shot checks (the agent lane)
 
 `jojo <kernel.jam> --check file.jock` boots the kernel, pokes its

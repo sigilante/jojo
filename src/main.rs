@@ -87,10 +87,22 @@ impl Validator for Entry {
 // prompt the line editor shows from the next line on.
 struct Answer { text: String, prompt: Option<String> }
 
-async fn process_input(nockapp: &mut NockApp<NockJammer>, tag: u64, input: &str) -> Result<Answer, Box<dyn Error>> {
+// What a poke came back as.  A REFUSED command and a DEAD KERNEL are
+// different events and the REPL has to tell them apart:  the first is
+// the session working, the second means no later poke can succeed
+// until the kernel is rebooted.  Answering "command failed" to both
+// made a dead session indistinguishable from a bad line, and every
+// line after the crash printed the same three words (jojo#17).
+enum Outcome {
+  Answered(Answer),
+  // the serf thread is gone;  the string is the error it died with
+  KernelDown(String),
+}
+
+async fn process_input(nockapp: &mut NockApp<NockJammer>, tag: u64, input: &str) -> Result<Outcome, Box<dyn Error>> {
   // Handle empty input
   if input.trim().is_empty() {
-    return Ok(Answer { text: String::new(), prompt: None });
+    return Ok(Outcome::Answered(Answer { text: String::new(), prompt: None }));
   }
 
   let mut poke_slab = NounSlab::new();
@@ -123,13 +135,45 @@ async fn process_input(nockapp: &mut NockApp<NockJammer>, tag: u64, input: &str)
           if is_prompt { prompt = Some(text); } else { results.push(text); }
         }
       }
-      Ok(Answer {
+      Ok(Outcome::Answered(Answer {
         text: results.last().cloned().unwrap_or_else(|| "(no answer: scry blocked or empty)".to_string()),
         prompt,
-      })
+      }))
     }
-    Err(_e) => {
-      Ok(Answer { text: "command failed".to_string(), prompt: None })
+    // The error was DISCARDED here until 2026-11-10, which is the
+    // whole of jojo#17:  a NockStack exhaustion panics the serf, the
+    // poke comes back Err, and so does every poke after it, each
+    // answering a bare "command failed" that names neither the cause
+    // nor the fact that the kernel is gone.
+    //
+    // WHICH ERRORS MEAN THE SERF IS GONE, measured rather than
+    // guessed.  Reading nockapp suggests CrownError::Unknown
+    // ("Serf thread panicked: ...") and JoinError, which is what the
+    // Stop/join path reports.  A poke does NOT take that path:  the
+    // serf thread is already unwinding, so what comes back is a
+    // CLOSED CHANNEL.  Reproduced on a NockStack exhaustion --- the
+    // fatal poke answers "oneshot channel error" (its reply sender
+    // dropped) and every poke after it "Serf MPSC error" (the action
+    // channel is closed).  A classifier built on the first two alone
+    // matched neither and never fired.
+    //
+    // All four mean reboot.  Both channel errors are closed-channel
+    // conditions rather than transient ones --- nockapp's driver
+    // documents MPSCSendError as "the channel is closed" --- so
+    // neither can fire against a live kernel.  Anything else is one
+    // poke failing while the kernel still answers, so it prints and
+    // the session carries on.
+    Err(e) => {
+      let msg = e.to_string();
+      let dead = msg.contains("Serf MPSC error")
+        || msg.contains("oneshot channel error")
+        || msg.contains("Serf thread panicked")
+        || msg.contains("join error");
+      if dead {
+        Ok(Outcome::KernelDown(msg))
+      } else {
+        Ok(Outcome::Answered(Answer { text: format!("command failed: {}", msg), prompt: None }))
+      }
     }
   }
 }
@@ -202,7 +246,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
   if let Some(src_path) = check_arg {
     let src = fs::read_to_string(&src_path)
       .map_err(|e| format!("Failed to read {}: {}", src_path, e))?;
-    let out = process_input(&mut nockapp, tas!(b"check"), src.trim_end()).await?.text;
+    let out = match process_input(&mut nockapp, tas!(b"check"), src.trim_end()).await? {
+      Outcome::Answered(a) => a.text,
+      // The kernel dying is not a verdict ABOUT THE SOURCE, and a
+      // one-shot lane must not let it read as one:  exit 70 rather
+      // than 1, so a harness can tell "this file does not check"
+      // from "the checker died" (jojo#17).
+      Outcome::KernelDown(err) => {
+        eprintln!("jojo: kernel failure during --check, no verdict: {}", err);
+        std::process::exit(70);
+      }
+    };
     println!("{}", out);
     // the verdict comes from the JSON's leading status field, not a
     // substring scan: +chkj emits {"status":... first and +jesc
@@ -224,6 +278,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
   let hist = format!(".{}_history", instance);
   let _ = rl.load_history(&hist);
   let mut prompt = prompt_arg.unwrap_or_else(|| "jojo> ".to_string());
+  // CONSECUTIVE kernel restarts, and a ceiling on them.  A poke that
+  // kills the serf can be replayed by the restarted kernel --- state
+  // recovery is nockapp's business, not jojo's --- and without a
+  // ceiling that is an infinite restart loop with a loud banner each
+  // time.  Three attempts, then exit 70 and let a driver decide.
+  const MAX_RESTARTS: u32 = 3;
+  let mut restarts: u32 = 0;
   loop {
     match rl.readline(&prompt) {
       Ok(entry) => {
@@ -235,13 +296,63 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if chunk == "exit" || chunk == ":exit" || chunk == ":q" {
           break;
         }
-        if let Ok(answer) = process_input(&mut nockapp, tas!(b"command"), chunk).await {
-          // an empty answer (a statement, an assignment) prints no line
-          if !answer.text.is_empty() {
-            println!("{}", answer.text);
+        match process_input(&mut nockapp, tas!(b"command"), chunk).await {
+          Ok(Outcome::Answered(answer)) => {
+            // a poke that answered means the kernel is healthy, so the
+            // restart budget is spent on CONSECUTIVE failures only
+            restarts = 0;
+            // an empty answer (a statement, an assignment) prints no line
+            if !answer.text.is_empty() {
+              println!("{}", answer.text);
+            }
+            if let Some(p) = answer.prompt {
+              prompt = p;
+            }
           }
-          if let Some(p) = answer.prompt {
-            prompt = p;
+          Ok(Outcome::KernelDown(err)) => {
+            // LOUDLY, and on stderr:  the session just lost its state,
+            // which the user has to know before they read the next
+            // answer as continuous with the last (jojo#17).
+            eprintln!();
+            eprintln!("*** KERNEL FAILURE: the serf is gone. {}", err);
+            restarts += 1;
+            if restarts > MAX_RESTARTS {
+              eprintln!("*** {} consecutive restarts; giving up rather than looping.", MAX_RESTARTS);
+              eprintln!("*** If the command that killed it is reproducible, that is a kernel bug worth filing.");
+              let _ = rl.save_history(&hist);
+              std::process::exit(70);
+            }
+            eprintln!("*** restarting from {} (attempt {}/{})", jam_path, restarts, MAX_RESTARTS);
+            match boot::setup::<NockJammer>(&kernel, boot::default_boot_cli(false), &hot, &instance, None).await {
+              // WHAT SURVIVES, measured on a NockStack exhaustion
+              // rather than assumed.  The restart boots the same jam
+              // through the same path as startup, so nockapp recovers
+              // the session from the data directory:  a `let` and a
+              // `func` defined before the crash both still answer
+              // afterwards.  And the poke that killed the kernel is
+              // NOT replayed --- it panics before the event commits,
+              // so it never reaches the log the restart recovers.
+              //
+              // Neither is a jojo guarantee:  both are nockapp's
+              // recovery behaviour, and a run with no durable data
+              // directory would come back empty.  So the banner says
+              // what to re-check rather than promising a state.
+              Ok(fresh) => {
+                nockapp = fresh;
+                eprintln!("*** kernel restarted. Definitions are recovered where the data");
+                eprintln!("*** directory has them; re-check anything defined just before.");
+              }
+              // Nothing further can work, so say so and leave with a
+              // distinct code rather than pretending to be a prompt.
+              Err(e) => {
+                eprintln!("*** restart FAILED, the session cannot continue: {}", e);
+                let _ = rl.save_history(&hist);
+                std::process::exit(70);
+              }
+            }
+          }
+          Err(e) => {
+            eprintln!("jojo: {}", e);
           }
         }
       }

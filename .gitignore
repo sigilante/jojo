@@ -21,6 +21,10 @@ out.jam
 # ...and the chain-bearing kernel (compiled package, no source; see README)
 !jojo-chain.jam
 
+# Build tools that live here but are not shipped:  hoonc is a local
+# Mach-O used to build kernels, not an artifact of this repo.
+hoonc
+
 # Data directories  
 .data.*
 
